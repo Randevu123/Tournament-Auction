@@ -99,6 +99,15 @@
   .people li .grow { flex: 1; min-width: 0; }
   .people img, .people .av { width: 34px; height: 34px; border-radius: 50%; }
 
+  .log-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .log-list li { display: grid; grid-template-columns: 165px 110px 150px 1fr; gap: 12px; align-items: start; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+  .log-list .when { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .log-list .who { font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .log-list .act { font-weight: 700; }
+  .log-list .detail { color: #cfd5e6; word-break: break-word; }
+  .log-list .ev { display: block; color: var(--muted); font-size: 11px; }
+  .act.a-add { color: var(--ok); } .act.a-del { color: #ff8c96; } .act.a-edit { color: var(--gold); } .act.a-check { color: #8fd3ff; } .act.a-staff { color: #c9a6ff; }
+  @media (max-width: 900px) { .log-list li { grid-template-columns: 1fr; gap: 2px; } }
   .modal { position: fixed; inset: 0; background: rgba(5,6,10,.85); z-index: 45; display: none; place-items: center; padding: 16px; }
   .modal.show { display: grid; }
   .modal .box { width: min(520px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; display: grid; gap: 12px; }
@@ -173,7 +182,7 @@ const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 const NEED_CHECKS = 2;     // 서로 다른 운영진 몇 명이 확인하면 검수 완료인지
 let sb, me = null, events = [], detail = null, members = [], selected = null, tab = "people", filter = "all", search = "", myOnly = false, view = "event";
-let channel = null;
+let channel = null, logs = [], logsFor = null, logSearch = "";   // logsFor: 지금 들고 있는 기록이 어느 것인지 ('site' 또는 회차 id)
 
 function fail(msg) { $("gate").hidden = false; $("console").hidden = true; $("gateBox").innerHTML = `<h2>잠시만요</h2><p>${esc(msg)}</p>`; }
 function discordImg(url, name, size) { return url ? `<img src="${esc(url)}" alt="" style="width:${size}px;height:${size}px;border-radius:50%">` : avatar({ name }, size); }
@@ -269,12 +278,15 @@ async function refresh() {
   events = ev; members = mem || [];
   if (!selected || !events.some(e => e.id === selected)) selected = events[0] ? events[0].id : null;
   detail = selected ? await call("event_detail", { p_id: selected }) : null;
-  const sig = JSON.stringify([events, detail, members, selected, view]);
+  // 기록을 못 불러오면 이전 목록을 그대로 둠 (빈 목록으로 덮지 않음)
+  if (view === "staff") { const l = await call("get_log", { p_id: null, p_limit: 300 }); if (Array.isArray(l) && view === "staff") { logs = l; logsFor = "site"; } }
+  else if (tab === "log" && selected) { const want = selected, l = await call("get_log", { p_id: want, p_limit: 500 }); if (Array.isArray(l) && selected === want) { logs = l; logsFor = want; } }
+  const sig = JSON.stringify([events, detail, members, selected, view, tab, logs]);
   if (sig === lastSig) return;
   lastSig = sig;
   // 입력하는 도중에는 다시 그리지 않음 (입력칸을 벗어나면 그림)
   const f = document.activeElement;
-  if (f && $("view").contains(f) && /INPUT|SELECT|TEXTAREA/.test(f.tagName) && f.id !== "fSearch") { pendingRender = true; return; }
+  if (f && $("view").contains(f) && /INPUT|SELECT|TEXTAREA/.test(f.tagName) && f.id !== "fSearch" && f.id !== "logSearch") { pendingRender = true; return; }
   render();
 }
 let lastSig = "", pendingRender = false;
@@ -324,12 +336,12 @@ function renderEvent() {
       <div class="stat"><small>남은 할 일</small><b>${openTasks}<em>개</em></b></div>
     </div>
     <div class="tabs">
-      ${[["people", "참가자", S.length], ["schedule", "일정 · 신청 마감"], ["tasks", "할 일", openTasks], ["links", "링크"]]
+      ${[["people", "참가자", S.length], ["schedule", "일정 · 신청 마감"], ["tasks", "할 일", openTasks], ["links", "링크"], ["log", "기록"]]
         .map(([k, l, n]) => `<button data-tab="${k}" class="${tab === k ? "on" : ""}">${l}${n !== undefined ? `<b>${n}</b>` : ""}</button>`).join("")}
     </div>
     <div id="tabBody"></div>`;
-  $("view").querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = b.dataset.tab; renderEvent(); });
-  ({ people: renderPeople, schedule: renderSchedule, tasks: renderTasks, links: renderLinks })[tab]();
+  $("view").querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = b.dataset.tab; if (tab === "log") { lastSig = ""; refresh(); } renderEvent(); });
+  ({ people: renderPeople, schedule: renderSchedule, tasks: renderTasks, links: renderLinks, log: renderLog })[tab]();
 }
 
 /* ---------- 참가자: 고치기·지우기·메모·팀장·교차검수 ---------- */
@@ -483,6 +495,37 @@ function renderTasks() {
   };
 }
 
+/* ---------- 진행 기록: 누가 언제 무엇을 고쳤는지 ---------- */
+function actClass(a) {
+  if (/지움|거절|뺌|취소/.test(a)) return "a-del";
+  if (/추가|만듦|접수|등록/.test(a)) return "a-add";
+  if (/검수|재확인/.test(a)) return "a-check";
+  if (/운영진|초대|진행자/.test(a)) return "a-staff";
+  return "a-edit";
+}
+function logItems(list, showEvent, scope) {
+  if (logsFor !== scope) return `<li style="display:block;color:var(--muted)">기록을 불러오는 중…</li>`;
+  const q = logSearch.trim().toLowerCase();
+  const rows = list.filter(l => !q || `${l.who} ${l.action} ${l.detail} ${l.event || ""}`.toLowerCase().includes(q));
+  return rows.length ? rows.map(l => `<li>
+      <span class="when">${new Date(l.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+      <span class="who">${esc(l.who)}</span>
+      <span class="act ${actClass(l.action)}">${esc(l.action)}${showEvent && l.event ? `<span class="ev">${esc(l.event)}</span>` : ""}</span>
+      <span class="detail">${esc(l.detail)}</span></li>`).join("")
+    : `<li style="display:block;color:var(--muted)">${q ? "찾는 기록이 없어요." : "아직 기록이 없어요."}</li>`;
+}
+function logToolbar() {
+  return `<div class="toolbar"><input id="logSearch" placeholder="사람·내용으로 찾기 (예: 티어, 닉네임)" value="${esc(logSearch)}" style="min-width:260px">
+    <span style="color:var(--muted);font-size:12px">최근 기록부터 보여요. 기록은 고치거나 지울 수 없어요.</span></div>`;
+}
+function bindLogSearch(rerender) {
+  $("logSearch").oninput = ev => { logSearch = ev.target.value; const pos = ev.target.selectionStart; rerender(); const f = $("logSearch"); f.focus(); f.setSelectionRange(pos, pos); };
+}
+function renderLog() {
+  $("tabBody").innerHTML = logToolbar() + `<ul class="log-list">${logItems(logs, false, selected)}</ul>`;
+  bindLogSearch(renderLog);
+}
+
 /* ---------- 링크 ---------- */
 function pageLink(file, params) { const u = new URL(file, location.href); u.search = new URLSearchParams(params).toString(); u.hash = ""; return u.toString(); }
 function linkRow(label, url, color) { return `<div class="link-row" style="--c:${color || "var(--line)"}"><b>${esc(label)}</b><input readonly value="${esc(url)}"><button class="btn" data-copy>복사</button></div>`; }
@@ -505,12 +548,15 @@ async function copyBtn(ev) {
 }
 
 /* ---------- 운영진 관리 (진행자: 초대·승인·빼기) ---------- */
+let staffRenderSeq = 0;
 async function renderStaff() {
+  const seq = ++staffRenderSeq;
+  let invite = "";
+  if (me.role === "owner") { const r = await call("get_invite", { p_reset: false }); if (r) invite = pageLink("admin.html", { invite: r.code }); }
+  if (seq !== staffRenderSeq || view !== "staff") return;     // 더 새로 그린 화면이 있으면 옛 화면은 버림
   const owner = me.role === "owner";
   const pending = members.filter(m => m.role === "pending"), active = members.filter(m => m.role !== "pending");
   const person = (m, btns) => `<li>${discordImg(m.avatar, m.name, 34)}<div class="grow"><b>${esc(m.name)}</b> ${m.username ? `<span style="color:var(--muted);font-size:12px">@${esc(m.username)}</span>` : ""}</div>${btns}</li>`;
-  let invite = "";
-  if (owner) { const r = await call("get_invite", { p_reset: false }); if (r) invite = pageLink("admin.html", { invite: r.code }); }
   $("view").innerHTML = `
     <div class="ev-head"><h2>운영진 ${owner ? "관리" : "명단"}</h2></div>
     ${owner ? `<div class="card"><h3>운영진 초대 링크</h3>
@@ -520,7 +566,9 @@ async function renderStaff() {
     <div class="card"><h3>승인 기다리는 사람 ${pending.length}명</h3>
       <ul class="people">${pending.length ? pending.map(m => person(m, `<button class="btn primary" data-dec="approve" data-u="${m.user_id}">승인</button><button class="btn" data-dec="reject" data-u="${m.user_id}">거절</button>`)).join("") : `<li style="color:var(--muted)">없어요.</li>`}</ul></div>` : ""}
     <div class="card"><h3>운영진 ${active.length}명</h3>
-      <ul class="people">${active.map(m => person(m, m.role === "owner" ? `<span class="role owner">진행자</span>` : owner ? `<span class="role staff">운영진</span><button class="btn" data-dec="remove" data-u="${m.user_id}">빼기</button>` : `<span class="role staff">운영진</span>`)).join("")}</ul></div>`;
+      <ul class="people">${active.map(m => person(m, m.role === "owner" ? `<span class="role owner">진행자</span>` : owner ? `<span class="role staff">운영진</span><button class="btn" data-dec="remove" data-u="${m.user_id}">빼기</button>` : `<span class="role staff">운영진</span>`)).join("")}</ul></div>
+    <div class="card"><h3>전체 진행 기록 (모든 회차 + 운영진 승인 등)</h3>${logToolbar()}<ul class="log-list" id="siteLog">${logItems(logs, true, "site")}</ul></div>`;
+  bindLogSearch(() => { $("siteLog").innerHTML = logItems(logs, true, "site"); });
   $("view").onclick = async ev => {
     if (ev.target.matches("[data-copy]")) return copyBtn(ev);
     const b = ev.target.closest("[data-dec]");
@@ -532,7 +580,7 @@ async function renderStaff() {
     if (ev.target.id === "btnInviteReset" && confirm("새 초대 링크로 바꿀까요? 예전 링크는 더 이상 쓸 수 없어요.")) { await call("get_invite", { p_reset: true }); renderStaff(); }
   };
 }
-$("btnStaff").onclick = () => { view = "staff"; render(); };
+$("btnStaff").onclick = () => { view = "staff"; lastSig = ""; render(); refresh(); };
 
 /* ---------- 새 회차 ---------- */
 $("btnNewEvent").onclick = () => { $("nTitle").value = ""; $("newModal").classList.add("show"); setTimeout(() => $("nTitle").focus(), 50); };

@@ -151,6 +151,19 @@ create table if not exists public.tasks (                  -- 회차별 운영�
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.staff_log (             -- 진행 기록: 누가 언제 무엇을 고쳤는지
+  id         bigserial primary key,
+  auction_id uuid references public.auctions on delete cascade,   -- 비어 있으면 사이트 전체 일(운영진 승인 등)
+  user_id    uuid,
+  who        text not null default '',
+  action     text not null,
+  detail     text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists staff_log_auction_idx on public.staff_log (auction_id, id desc);
+alter table public.staff_log     enable row level security;
+revoke all on public.staff_log from anon, authenticated;
+
 alter table public.staff         enable row level security;
 alter table public.site_settings enable row level security;
 alter table public.signup_checks enable row level security;
@@ -681,6 +694,7 @@ begin
     select * into s from signups where auction_id = v_auction and user_id = v_uid;
     return jsonb_build_object('ok', false, 'reason', '이미 이 디스코드 계정으로 신청했어요.', 'signup', _signup_json(s));
   end if;
+  perform _slog(v_auction, '신청 접수', format('%s (%s) · %s / %s · %s', s.nick, s.discord_name, s.peak, s.current_tier, s.pos));
   return jsonb_build_object('ok', true, 'signup', _signup_json(s));
 end $$;
 
@@ -725,6 +739,20 @@ $$;
 create or replace function public._no() returns jsonb
 language sql immutable as $$ select jsonb_build_object('ok', false, 'reason', '운영진만 할 수 있어요. 디스코드로 로그인했는지 확인해 주세요.') $$;
 
+-- 진행 기록 남기기 (지금 로그인한 사람 이름으로)
+create or replace function public._slog(p_auction uuid, p_action text, p_detail text default '') returns void
+language plpgsql security definer set search_path = public as $$
+declare d record;
+begin
+  select * into d from _discord_of(auth.uid());
+  insert into staff_log (auction_id, user_id, who, action, detail)
+  values (p_auction, auth.uid(), coalesce(d.name, '알 수 없음'), p_action, left(coalesce(p_detail, ''), 500));
+end $$;
+
+-- 기록에 쓸 한국 시각 글자
+create or replace function public._kst(t timestamptz) returns text
+language sql immutable as $$ select coalesce(to_char(t at time zone 'Asia/Seoul', 'MM/DD HH24:MI'), '없음') $$;
+
 -- 내 상태: 로그인 여부, 역할, 진행자 등록 여부
 create or replace function public.my_role() returns jsonb
 language plpgsql stable security definer set search_path = public as $$
@@ -751,6 +779,7 @@ begin
   insert into staff (user_id, role, discord_name, discord_username, discord_avatar, approved_at)
   values (auth.uid(), 'owner', d.name, d.username, d.avatar, now())
   on conflict (user_id) do update set role = 'owner', approved_at = now();
+  perform _slog(null, '진행자 등록', d.name);
   return jsonb_build_object('ok', true);
 end $$;
 
@@ -767,6 +796,7 @@ begin
   select * into d from _discord_of(auth.uid());
   insert into staff (user_id, role, discord_name, discord_username, discord_avatar)
   values (auth.uid(), 'pending', d.name, d.username, d.avatar) on conflict (user_id) do nothing;
+  perform _slog(null, '운영진 요청', d.name);
   return jsonb_build_object('ok', true, 'role', 'pending');
 end $$;
 
@@ -783,12 +813,16 @@ end $$;
 -- 진행자만: 승인 / 거절 / 운영진에서 빼기
 create or replace function public.staff_decide(p_user uuid, p_action text) returns jsonb
 language plpgsql security definer set search_path = public as $$
+declare v_name text;
 begin
   if _my_role() is distinct from 'owner' then return jsonb_build_object('ok', false, 'reason', '진행자만 할 수 있어요.'); end if;
+  select discord_name into v_name from staff where user_id = p_user;
   if p_action = 'approve' then
     update staff set role = 'staff', approved_at = now() where user_id = p_user and role = 'pending';
+    if found then perform _slog(null, '운영진 승인', v_name); end if;
   elsif p_action in ('reject', 'remove') then
     delete from staff where user_id = p_user and role <> 'owner';
+    if found then perform _slog(null, case p_action when 'reject' then '운영진 요청 거절' else '운영진에서 뺌' end, v_name); end if;
   else return jsonb_build_object('ok', false, 'reason', '알 수 없는 조작이에요.');
   end if;
   return jsonb_build_object('ok', true);
@@ -798,7 +832,10 @@ create or replace function public.get_invite(p_reset boolean default false) retu
 language plpgsql security definer set search_path = public as $$
 begin
   if _my_role() is distinct from 'owner' then return null; end if;
-  if p_reset then update site_settings set invite_code = replace(gen_random_uuid()::text, '-', '') where id = 1; end if;
+  if p_reset then
+    update site_settings set invite_code = replace(gen_random_uuid()::text, '-', '') where id = 1;
+    perform _slog(null, '초대 링크 새로 바꿈', '예전 초대 링크는 더 이상 쓸 수 없음');
+  end if;
   return jsonb_build_object('code', (select invite_code from site_settings where id = 1));
 end $$;
 
@@ -833,14 +870,17 @@ begin
     insert into auction_keys (key, auction_id, role, team_idx) values (replace(gen_random_uuid()::text, '-', ''), v_id, 'team', i);
   end loop;
   perform _log(v_id, '', format('%s 님이 회차를 만들었습니다.', d.name));
+  perform _slog(v_id, '회차 만듦', left(coalesce(trim(p_title), ''), 60));
   return jsonb_build_object('ok', true, 'id', v_id);
 end $$;
 
 -- 회차 이름·일정·신청 마감 바꾸기
 create or replace function public.update_event(p_id uuid, p_patch jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
+declare o auctions; n auctions; v_changes text;
 begin
   if not _is_staff() then return _no(); end if;
+  select * into o from auctions where id = p_id;
   if p_patch ? 'signup_mode' and not (p_patch ->> 'signup_mode' = any (array['auto', 'open', 'closed'])) then
     return jsonb_build_object('ok', false, 'reason', '신청 상태 값이 잘못됐어요.');
   end if;
@@ -851,8 +891,18 @@ begin
     auction_at       = case when p_patch ? 'auction_at' then (p_patch ->> 'auction_at')::timestamptz else auction_at end,
     match_at         = case when p_patch ? 'match_at' then (p_patch ->> 'match_at')::timestamptz else match_at end,
     signup_mode      = case when p_patch ? 'signup_mode' then p_patch ->> 'signup_mode' else signup_mode end
-  where id = p_id;
-  if not found then return jsonb_build_object('ok', false, 'reason', '회차를 찾지 못했어요.'); end if;
+  where id = p_id
+  returning * into n;
+  if n.id is null then return jsonb_build_object('ok', false, 'reason', '회차를 찾지 못했어요.'); end if;
+  v_changes := concat_ws(', ',
+    case when n.title is distinct from o.title then format('이름 "%s" → "%s"', o.title, n.title) end,
+    case when n.signup_opens_at is distinct from o.signup_opens_at then format('신청 시작 %s → %s', _kst(o.signup_opens_at), _kst(n.signup_opens_at)) end,
+    case when n.signup_closes_at is distinct from o.signup_closes_at then format('신청 마감 %s → %s', _kst(o.signup_closes_at), _kst(n.signup_closes_at)) end,
+    case when n.auction_at is distinct from o.auction_at then format('경매 일시 %s → %s', _kst(o.auction_at), _kst(n.auction_at)) end,
+    case when n.match_at is distinct from o.match_at then format('경기 일시 %s → %s', _kst(o.match_at), _kst(n.match_at)) end,
+    case when n.signup_mode is distinct from o.signup_mode then format('신청 상태 → %s',
+      case n.signup_mode when 'auto' then '일정대로 자동' when 'open' then '지금 열기' else '지금 마감' end) end);
+  if v_changes <> '' then perform _slog(p_id, '일정·신청 바꿈', v_changes); end if;
   return jsonb_build_object('ok', true);
 end $$;
 
@@ -887,7 +937,7 @@ end $$;
 -- 신청 고치기: 닉네임·티어·포지션·메모·팀장. 티어를 고치면 그 사람의 검수는 처음부터 다시
 create or replace function public.signup_update(p_signup bigint, p_patch jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare s signups; d record; v_peak text; v_cur text; v_teams int;
+declare s signups; d record; v_peak text; v_cur text; v_teams int; v_changes text; v_nick text;
 begin
   if not _is_staff() then return _no(); end if;
   select * into s from signups where id = p_signup for update;
@@ -904,6 +954,17 @@ begin
     end if;
   end if;
   select * into d from _discord_of(auth.uid());
+  v_nick := case when p_patch ? 'nick' then left(trim(p_patch ->> 'nick'), 16) else s.nick end;
+  v_changes := concat_ws(', ',
+    case when v_nick <> s.nick then format('닉네임 %s → %s', s.nick, v_nick) end,
+    case when v_peak <> s.peak then format('최고 티어 %s → %s', s.peak, v_peak) end,
+    case when v_cur <> s.current_tier then format('현재 티어 %s → %s', s.current_tier, v_cur) end,
+    case when p_patch ? 'pos' and p_patch ->> 'pos' <> s.pos then format('포지션 %s → %s', s.pos, p_patch ->> 'pos') end,
+    case when p_patch ? 'memo' and left(coalesce(p_patch ->> 'memo', ''), 200) <> s.memo then format('메모 "%s" → "%s"', s.memo, left(coalesce(p_patch ->> 'memo', ''), 200)) end,
+    case when (p_patch ->> 'captain') is not null and (p_patch ->> 'captain')::boolean <> s.captain
+         then case when (p_patch ->> 'captain')::boolean then '팀장으로 지정' else '팀장에서 뺌' end end,
+    case when v_peak <> s.peak or v_cur <> s.current_tier then '(티어가 바뀌어 검수 초기화)' end);
+  if v_changes <> '' then perform _slog(s.auction_id, '참가자 고침', format('%s (%s): %s', s.nick, s.discord_name, v_changes)); end if;
   if v_peak <> s.peak or v_cur <> s.current_tier then delete from signup_checks where signup_id = s.id; end if;
   update signups set
     nick         = case when p_patch ? 'nick' then left(trim(p_patch ->> 'nick'), 16) else nick end,
@@ -918,26 +979,33 @@ end $$;
 
 create or replace function public.signup_delete(p_signup bigint) returns jsonb
 language plpgsql security definer set search_path = public as $$
+declare s signups;
 begin
   if not _is_staff() then return _no(); end if;
-  delete from signups where id = p_signup;
+  delete from signups where id = p_signup returning * into s;
+  if s.id is not null then
+    perform _slog(s.auction_id, '신청 지움', format('%s (%s) · %s / %s · %s', s.nick, s.discord_name, s.peak, s.current_tier, s.pos));
+  end if;
   return jsonb_build_object('ok', true);
 end $$;
 
 -- 교차검수 표시 켜기/끄기 (내 이름으로)
 create or replace function public.signup_check(p_signup bigint, p_kind text, p_on boolean) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare d record;
+declare d record; s signups; v_label text := case p_kind when 'tier' then '티어 검수' else '점수 계산 재확인' end;
 begin
   if not _is_staff() then return _no(); end if;
   if p_kind not in ('tier', 'score') then return jsonb_build_object('ok', false, 'reason', '검수 종류가 잘못됐어요.'); end if;
-  if not exists (select 1 from signups where id = p_signup) then return jsonb_build_object('ok', false, 'reason', '신청을 찾지 못했어요.'); end if;
+  select * into s from signups where id = p_signup;
+  if s.id is null then return jsonb_build_object('ok', false, 'reason', '신청을 찾지 못했어요.'); end if;
   if p_on then
     select * into d from _discord_of(auth.uid());
     insert into signup_checks (signup_id, kind, user_id, staff_name) values (p_signup, p_kind, auth.uid(), d.name)
     on conflict do nothing;
+    if found then perform _slog(s.auction_id, v_label || ' 확인', format('%s (%s) · %s / %s', s.nick, s.discord_name, s.peak, s.current_tier)); end if;
   else
     delete from signup_checks where signup_id = p_signup and kind = p_kind and user_id = auth.uid();
+    if found then perform _slog(s.auction_id, v_label || ' 확인 취소', format('%s (%s)', s.nick, s.discord_name)); end if;
   end if;
   return jsonb_build_object('ok', true);
 end $$;
@@ -951,30 +1019,63 @@ begin
   if coalesce(trim(p_title), '') = '' then return jsonb_build_object('ok', false, 'reason', '할 일 내용을 적어 주세요.'); end if;
   select * into d from _discord_of(auth.uid());
   insert into tasks (auction_id, title, assignee, due_at, created_by) values (p_id, left(trim(p_title), 100), p_assignee, p_due, d.name);
+  perform _slog(p_id, '할 일 추가', concat_ws(' · ', left(trim(p_title), 100),
+    (select '담당 ' || discord_name from staff where user_id = p_assignee), case when p_due is not null then _kst(p_due) || '까지' end));
   return jsonb_build_object('ok', true);
 end $$;
 
 create or replace function public.task_update(p_task bigint, p_patch jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
+declare o tasks; n tasks; v_changes text;
 begin
   if not _is_staff() then return _no(); end if;
+  select * into o from tasks where id = p_task;
   update tasks set
     title    = case when p_patch ? 'title' and coalesce(trim(p_patch ->> 'title'), '') <> '' then left(trim(p_patch ->> 'title'), 100) else title end,
     assignee = case when p_patch ? 'assignee' then (p_patch ->> 'assignee')::uuid else assignee end,
     due_at   = case when p_patch ? 'due_at' then (p_patch ->> 'due_at')::timestamptz else due_at end,
     done     = coalesce((p_patch ->> 'done')::boolean, done),
     done_at  = case when (p_patch ->> 'done')::boolean then now() when p_patch ? 'done' then null else done_at end
-  where id = p_task;
+  where id = p_task
+  returning * into n;
+  if n.id is not null then
+    v_changes := concat_ws(', ',
+      case when n.title <> o.title then format('내용 "%s" → "%s"', o.title, n.title) end,
+      case when n.assignee is distinct from o.assignee then format('담당 %s → %s',
+        coalesce((select discord_name from staff where user_id = o.assignee), '없음'), coalesce((select discord_name from staff where user_id = n.assignee), '없음')) end,
+      case when n.due_at is distinct from o.due_at then format('기한 %s → %s', _kst(o.due_at), _kst(n.due_at)) end,
+      case when n.done <> o.done then case when n.done then '완료' else '다시 할 일로' end end);
+    if v_changes <> '' then perform _slog(n.auction_id, '할 일 바꿈', format('%s: %s', o.title, v_changes)); end if;
+  end if;
   return jsonb_build_object('ok', true);
 end $$;
 
 create or replace function public.task_delete(p_task bigint) returns jsonb
 language plpgsql security definer set search_path = public as $$
+declare t tasks;
 begin
   if not _is_staff() then return _no(); end if;
-  delete from tasks where id = p_task;
+  delete from tasks where id = p_task returning * into t;
+  if t.id is not null then perform _slog(t.auction_id, '할 일 지움', t.title); end if;
   return jsonb_build_object('ok', true);
 end $$;
+
+-- 진행 기록 보기: 회차 하나(p_id) 또는 사이트 전체(p_id 없음)
+create or replace function public.get_log(p_id uuid default null, p_limit int default 300) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not _is_staff() then return null; end if;
+  return (select coalesce(jsonb_agg(jsonb_build_object('id', l.id, 'who', l.who, 'action', l.action, 'detail', l.detail,
+            'at', _ms(l.created_at), 'event', coalesce(nullif(a.title, ''), case when l.auction_id is not null then '이름 없는 회차' end)) order by l.id desc), '[]')
+          from (select * from staff_log
+                where (p_id is null or auction_id = p_id)
+                order by id desc limit least(greatest(coalesce(p_limit, 300), 1), 1000)) l
+          left join auctions a on a.id = l.auction_id);
+end $$;
+
+revoke execute on function public._slog(uuid, text, text), public._kst(timestamptz) from public, anon, authenticated;
+revoke execute on function public.get_log(uuid, int) from public;
+grant execute on function public.get_log(uuid, int) to anon, authenticated;
 
 revoke execute on function public._ms(timestamptz), public._signup_open(public.auctions), public._discord_of(uuid),
   public._my_role(), public._is_staff(), public._no() from public, anon, authenticated;
