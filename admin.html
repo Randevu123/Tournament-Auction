@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>내전 운영진 콘솔</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="common.css">
+<style>
+  :root { --discord: #5865f2; }
+  header .me { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  header .me img, header .me .av { width: 30px; height: 30px; border-radius: 50%; }
+  .role { font-size: 11px; font-weight: 900; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .role.owner { color: var(--gold); border-color: var(--gold); }
+  .role.staff { color: var(--ok); border-color: var(--ok); }
+  .link-btn { background: none; border: 0; color: var(--muted); text-decoration: underline; font-size: 13px; padding: 4px; }
+
+  .gate { max-width: 520px; margin: 60px auto; padding: 0 16px; }
+  .gate .panel { padding: 26px; display: grid; gap: 14px; text-align: center; }
+  .gate h2 { font-family: var(--num); font-weight: 400; font-size: 34px; margin: 0; }
+  .gate p { color: var(--muted); margin: 0; line-height: 1.6; }
+  .btn-discord { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; background: var(--discord); color: #fff; border: 0; border-radius: 12px; padding: 15px; font-size: 17px; font-weight: 900; }
+
+  .console { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; padding: 16px 20px 40px; align-items: start; }
+  aside { display: grid; gap: 10px; position: sticky; top: 12px; }
+  .ev-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: calc(100vh - 220px); overflow: auto; }
+  .ev-list li { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; display: grid; gap: 4px; }
+  .ev-list li.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 20px rgba(255,70,85,.2); }
+  .ev-list .t { font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ev-list .m { font-size: 12px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { display: inline-block; font-size: 11px; font-weight: 900; padding: 1px 8px; border-radius: 999px; background: rgba(255,255,255,.06); color: var(--muted); }
+  .chip.open { background: rgba(61,220,151,.15); color: var(--ok); }
+  .chip.closed { background: rgba(255,176,32,.12); color: var(--warn); }
+  .chip.done { background: rgba(61,220,151,.15); color: var(--ok); }
+  .chip.part { background: rgba(255,209,102,.12); color: var(--gold); }
+
+  .ev-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .ev-head h2 { margin: 0; font-family: var(--num); font-weight: 400; font-size: 32px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .stat small { display: block; font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+  .stat b { font-family: var(--num); font-weight: 400; font-size: 28px; }
+  .stat b em { font-style: normal; font-size: 16px; color: var(--muted); }
+  .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin-bottom: 14px; overflow-x: auto; }
+  .tabs button { background: none; border: 0; color: var(--muted); padding: 10px 14px; font-weight: 900; border-bottom: 3px solid transparent; white-space: nowrap; }
+  .tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+  .tabs button b { font-size: 11px; background: var(--panel-2); padding: 0 6px; border-radius: 999px; margin-left: 4px; }
+
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .toolbar input, .toolbar select, .form-row input, .form-row select, .field input, .field select, .field textarea {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+  .table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+  table.grid { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 1080px; }
+  table.grid th { text-align: left; font-size: 11px; color: var(--muted); padding: 10px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; letter-spacing: 1px; }
+  table.grid td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  table.grid tr:last-child td { border-bottom: 0; }
+  table.grid tr.captain td { background: rgba(255,209,102,.05); }
+  .dc { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .dc img, .dc .av { width: 26px; height: 26px; border-radius: 50%; }
+  .dc small { display: block; color: var(--muted); font-size: 11px; }
+  .star { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 8px; width: 34px; height: 30px; font-size: 16px; }
+  .star.on { color: #1a1400; background: var(--gold); border-color: var(--gold); }
+  .chk { display: grid; gap: 4px; min-width: 120px; }
+  .chk .names { font-size: 11px; color: var(--muted); }
+  .chk button { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; }
+  .chk button.mine { border-color: var(--ok); color: var(--ok); }
+  .calc { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .memo { max-width: 180px; font-size: 12px; color: #d9c7ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  .memo.empty { color: var(--muted); }
+  .acts { display: flex; gap: 4px; }
+  .acts button { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
+  .acts button.del { color: #ff8c96; }
+  .score { font-family: var(--num); font-size: 18px; color: var(--gold); }
+
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .field { display: grid; gap: 6px; }
+  .field label { font-size: 12px; font-weight: 700; color: var(--muted); }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg button { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 14px; font-weight: 700; }
+  .seg button.on { border-color: var(--accent); background: rgba(255,70,85,.15); color: #ff8c96; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; margin-bottom: 14px; }
+  .card h3 { margin: 0; font-size: 13px; letter-spacing: 2px; color: var(--muted); }
+  .big-state { font-family: var(--num); font-size: 26px; }
+
+  .tasks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .tasks li { display: grid; grid-template-columns: 26px 1fr 160px 150px 34px; gap: 8px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .tasks li.done .tt { text-decoration: line-through; color: var(--muted); }
+  .tasks li.late .due { color: var(--accent); font-weight: 900; }
+  .tasks input[type=checkbox] { width: 18px; height: 18px; }
+  .tasks select { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px; font-size: 12px; }
+  .tasks .due { font-size: 12px; color: var(--muted); }
+  .tasks .x { background: none; border: 0; color: var(--muted); font-size: 18px; }
+  .form-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .form-row input[type=text] { flex: 1; min-width: 180px; }
+
+  .people { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .people li { display: flex; align-items: center; gap: 10px; background: var(--panel-2); border-radius: 10px; padding: 8px 10px; }
+  .people li .grow { flex: 1; min-width: 0; }
+  .people img, .people .av { width: 34px; height: 34px; border-radius: 50%; }
+
+  .modal { position: fixed; inset: 0; background: rgba(5,6,10,.85); z-index: 45; display: none; place-items: center; padding: 16px; }
+  .modal.show { display: grid; }
+  .modal .box { width: min(520px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; display: grid; gap: 12px; }
+  .modal h3 { margin: 0; font-family: var(--num); font-weight: 400; font-size: 26px; }
+  .modal textarea { min-height: 70px; resize: vertical; }
+  .modal .row { display: flex; gap: 8px; justify-content: flex-end; }
+  .warn-note { font-size: 12px; color: var(--warn); }
+  .empty-view { color: var(--muted); text-align: center; padding: 60px 10px; }
+
+  @media (max-width: 900px) {
+    .console { grid-template-columns: 1fr; padding: 12px 16px 40px; }
+    aside { position: static; }
+    .ev-list { max-height: 240px; }
+    .tasks li { grid-template-columns: 26px 1fr 34px; }
+    .tasks li select, .tasks li .due { grid-column: 2 / 3; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">VALORANT <span>운영진 콘솔</span></div>
+  <div class="spacer"></div>
+  <div class="me" id="me" hidden></div>
+</header>
+
+<div class="gate" id="gate" hidden><div class="panel" id="gateBox"></div></div>
+
+<div class="console" id="console" hidden>
+  <aside>
+    <button class="btn primary" id="btnNewEvent">새 회차 만들기</button>
+    <ul class="ev-list" id="evList"></ul>
+    <button class="btn" id="btnStaff">운영진 관리</button>
+  </aside>
+  <main id="view"></main>
+</div>
+
+<!-- 신청 고치기 -->
+<div class="modal" id="editModal"><div class="box">
+  <h3>신청 고치기</h3>
+  <div class="dc" id="editWho"></div>
+  <div class="field"><label>게임 닉네임</label><input id="eNick" maxlength="16"></div>
+  <div class="form-grid">
+    <div class="field"><label>최고 티어</label><select id="ePeak"></select></div>
+    <div class="field"><label>현재 티어</label><select id="eCur"></select></div>
+    <div class="field"><label>포지션</label><select id="ePos"></select></div>
+  </div>
+  <div class="field"><label>운영진 메모 (참가자에게는 안 보여요)</label><textarea id="eMemo" maxlength="200"></textarea></div>
+  <div class="warn-note">티어를 바꾸면 이 사람의 티어 검수와 점수 재확인이 처음부터 다시 시작돼요.</div>
+  <div class="row"><button class="btn" data-close>닫기</button><button class="btn primary" id="btnEditSave">저장</button></div>
+</div></div>
+
+<!-- 새 회차 -->
+<div class="modal" id="newModal"><div class="box">
+  <h3>새 회차 만들기</h3>
+  <div class="field"><label>회차 이름</label><input id="nTitle" maxlength="60" placeholder="예: 10월 1주차 내전"></div>
+  <p style="color:var(--muted);margin:0;font-size:13px">만든 뒤 ‘일정’ 탭에서 신청 기간과 경매 날짜를 정하고 신청을 여세요. 처음에는 신청이 닫혀 있어요.</p>
+  <div class="row"><button class="btn" data-close>닫기</button><button class="btn primary" id="btnNewSave">만들기</button></div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="common.js"></script>
+<script>
+/* =====================================================================
+   운영진 콘솔 — 경매 전에 쓰는 화면
+   참가자 명단 관리(고치기·지우기·메모·팀장 배정), 티어/점수 교차검수(운영진 2명),
+   회차 일정·신청 마감, 할 일, 링크, 운영진 초대·승인
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const Q = new URLSearchParams(location.search);
+const NEED_CHECKS = 2;     // 서로 다른 운영진 몇 명이 확인하면 검수 완료인지
+let sb, me = null, events = [], detail = null, members = [], selected = null, tab = "people", filter = "all", search = "", myOnly = false, view = "event";
+let channel = null;
+
+function fail(msg) { $("gate").hidden = false; $("console").hidden = true; $("gateBox").innerHTML = `<h2>잠시만요</h2><p>${esc(msg)}</p>`; }
+function discordImg(url, name, size) { return url ? `<img src="${esc(url)}" alt="" style="width:${size}px;height:${size}px;border-radius:50%">` : avatar({ name }, size); }
+function fmt(ms) { return ms ? new Date(ms).toLocaleString("ko-KR", { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" }) : "미정"; }
+function toLocalInput(ms) { if (!ms) return ""; const d = new Date(ms); return new Date(ms - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); }
+function fromLocalInput(v) { return v ? new Date(v).toISOString() : null; }
+async function call(fn, args = {}) {
+  const { data, error } = await sb.rpc(fn, args);
+  if (error) { toast("서버에 닿지 못했어요: " + error.message); return null; }
+  return data;
+}
+async function mutate(fn, args) {
+  const r = await call(fn, args);
+  if (r && r.ok === false) { toast(r.reason); return r; }
+  if (r) { ping(); lastSig = ""; if (document.activeElement) document.activeElement.blur(); await refresh(); }
+  return r;
+}
+function ping() { if (channel) channel.send({ type: "broadcast", event: "changed", payload: {} }); }
+
+/* ---------- 로그인과 권한 ---------- */
+async function boot() {
+  if (!isConfigured()) return fail("아직 Supabase 연결 정보가 없어요.");
+  sb = window.supabase.createClient(AUCTION_CONFIG.supabaseUrl, AUCTION_CONFIG.supabaseKey, {
+    auth: { flowType: "implicit", persistSession: true, detectSessionInUrl: true, autoRefreshToken: true },
+  });
+  const hash = new URLSearchParams(location.hash.slice(1));
+  if (hash.get("error_description")) toast("로그인하지 못했어요: " + hash.get("error_description"));
+  await sb.auth.getSession();
+  if (location.hash.includes("access_token") || location.hash.includes("error")) history.replaceState(null, "", location.pathname + location.search);
+  let last = null;
+  sb.auth.onAuthStateChange((ev, s) => { const t = s && s.access_token; if (t !== last) { last = t; setTimeout(route, 0); } });
+  route();
+}
+
+async function login() {
+  const { error } = await sb.auth.signInWithOAuth({ provider: "discord", options: { redirectTo: location.href.split("#")[0] } });
+  if (error) toast("로그인을 시작하지 못했어요: " + error.message);
+}
+async function logout() { await sb.auth.signOut(); location.reload(); }
+
+async function route() {
+  me = await call("my_role");
+  if (!me) return fail("서버에 연결하지 못했어요. 잠시 뒤 새로고침해 주세요.");
+  renderMe();
+  const box = $("gateBox");
+  const claim = Q.get("claim"), claimKey = Q.get("k"), invite = Q.get("invite");
+  if (!me.logged_in) {
+    showGate(`<h2>운영진 로그인</h2><p>진행자에게 승인받은 운영진만 들어올 수 있어요.<br>디스코드 계정으로 로그인해 주세요.</p>
+      <button class="btn-discord" id="gLogin">디스코드로 로그인</button>`);
+    $("gLogin").onclick = login; return;
+  }
+  if (me.role === "owner" || me.role === "staff") return startConsole();
+  if (!me.owner_exists && claim && claimKey) {
+    showGate(`<h2>진행자 등록</h2><p><b>${esc(me.name)}</b> 계정을 이 사이트의 진행자(주인)로 등록할까요?<br>진행자는 운영진을 승인하고, 경매 진행자·팀장 링크를 볼 수 있어요. 한 번 등록하면 다른 사람은 진행자가 될 수 없어요.</p>
+      <button class="btn primary big" id="gClaim">진행자로 등록</button>`);
+    $("gClaim").onclick = async () => { const r = await call("claim_owner", { p_id: claim, p_key: claimKey }); if (r && !r.ok) toast(r.reason); history.replaceState(null, "", location.pathname); route(); };
+    return;
+  }
+  if (me.role === "pending") return showGate(`<h2>승인 기다리는 중</h2><p><b>${esc(me.name)}</b> 님의 운영진 요청을 보냈어요.<br>진행자가 승인하면 이 화면을 새로고침해 주세요.</p><button class="btn" onclick="location.reload()">새로고침</button>`);
+  if (invite) {
+    showGate(`<h2>운영진 초대</h2><p><b>${esc(me.name)}</b> 계정으로 운영진 요청을 보낼까요?<br>진행자가 승인하면 운영진 콘솔을 쓸 수 있어요.</p><button class="btn primary big" id="gReq">운영진 요청 보내기</button>`);
+    $("gReq").onclick = async () => { const r = await call("request_staff", { p_invite: invite }); if (r && !r.ok) toast(r.reason); route(); };
+    return;
+  }
+  showGate(me.owner_exists
+    ? `<h2>운영진이 아니에요</h2><p>진행자에게 운영진 초대 링크를 받아서 들어와 주세요.</p>`
+    : `<h2>진행자 등록 전</h2><p>아직 진행자가 없어요. 진행자는 경매 진행자 화면의 ‘운영진 콘솔’ 버튼으로 들어오면 등록할 수 있어요.</p>`);
+}
+function showGate(html) { $("gate").hidden = false; $("console").hidden = true; $("gateBox").innerHTML = html; }
+function renderMe() {
+  const el = $("me");
+  if (!me || !me.logged_in) { el.hidden = true; return; }
+  const label = { owner: "진행자", staff: "운영진", pending: "승인 대기" }[me.role] || "로그인됨";
+  el.hidden = false;
+  el.innerHTML = `${discordImg(me.avatar, me.name, 30)}<span>${esc(me.name)}</span><span class="role ${esc(me.role || "")}">${label}</span><button class="link-btn" id="btnLogout">로그아웃</button>`;
+  $("btnLogout").onclick = logout;
+}
+
+/* ---------- 콘솔 ---------- */
+async function startConsole() {
+  $("gate").hidden = true; $("console").hidden = false;
+  $("btnStaff").textContent = me.role === "owner" ? "운영진 관리 · 초대" : "운영진 명단";
+  try { selected = localStorage.getItem("valo-console-event"); } catch (e) { /* 무시 */ }
+  channel = sb.channel("staff-console", { config: { broadcast: { self: false } } })
+    .on("broadcast", { event: "changed" }, () => refresh()).subscribe();
+  await refresh();
+  setInterval(refresh, 6000);
+}
+
+async function refresh() {
+  const [ev, mem] = await Promise.all([call("list_events"), call("staff_members")]);
+  if (ev === null) return route();            // 권한이 사라졌으면 처음 화면으로
+  events = ev; members = mem || [];
+  if (!selected || !events.some(e => e.id === selected)) selected = events[0] ? events[0].id : null;
+  detail = selected ? await call("event_detail", { p_id: selected }) : null;
+  const sig = JSON.stringify([events, detail, members, selected, view]);
+  if (sig === lastSig) return;
+  lastSig = sig;
+  // 입력하는 도중에는 다시 그리지 않음 (입력칸을 벗어나면 그림)
+  const f = document.activeElement;
+  if (f && $("view").contains(f) && /INPUT|SELECT|TEXTAREA/.test(f.tagName) && f.id !== "fSearch") { pendingRender = true; return; }
+  render();
+}
+let lastSig = "", pendingRender = false;
+document.addEventListener("focusout", () => setTimeout(() => {
+  const f = document.activeElement;
+  if (pendingRender && !(f && $("view").contains(f) && /INPUT|SELECT|TEXTAREA/.test(f.tagName))) { pendingRender = false; render(); }
+}, 0));
+
+function selectEvent(id) {
+  selected = id; view = "event"; lastSig = "";
+  try { localStorage.setItem("valo-console-event", id); } catch (e) { /* 무시 */ }
+  refresh();
+}
+
+function render() {
+  $("evList").innerHTML = events.length ? events.map(e => `
+    <li class="${e.id === selected && view === "event" ? "on" : ""}" data-ev="${e.id}">
+      <div class="t">${esc(e.title || "이름 없는 회차")}</div>
+      <div class="m"><span class="chip ${e.open ? "open" : "closed"}">${e.open ? "신청 받는 중" : "신청 닫힘"}</span><span>경매 ${fmt(e.auction_at)}</span></div>
+      <div class="m"><span>신청 ${e.signups}명</span><span>팀장 ${e.captains}/${e.team_count}</span>${e.tasks_open ? `<span>할 일 ${e.tasks_open}</span>` : ""}</div>
+    </li>`).join("") : `<li style="cursor:default;color:var(--muted)">아직 회차가 없어요. ‘새 회차 만들기’를 눌러 주세요.</li>`;
+  if (view === "staff") return renderStaff();
+  if (!detail) { $("view").innerHTML = `<div class="empty-view">왼쪽에서 회차를 고르거나 새로 만들어 주세요.</div>`; return; }
+  renderEvent();
+}
+$("evList").addEventListener("click", e => { const li = e.target.closest("[data-ev]"); if (li) selectEvent(li.dataset.ev); });
+
+function checksOf(s, kind) { return s.checks.filter(c => c.kind === kind); }
+function isDone(s, kind) { return checksOf(s, kind).length >= NEED_CHECKS; }
+
+function renderEvent() {
+  const e = detail.event, S = detail.signups, T = detail.tasks;
+  const caps = S.filter(s => s.captain).length;
+  const tierDone = S.filter(s => isDone(s, "tier")).length, scoreDone = S.filter(s => isDone(s, "score")).length;
+  const openTasks = T.filter(t => !t.done).length;
+  $("view").innerHTML = `
+    <div class="ev-head">
+      <h2>${esc(e.title || "이름 없는 회차")}</h2>
+      <span class="chip ${e.open ? "open" : "closed"}">${e.open ? "신청 받는 중" : "신청 닫힘"}</span>
+      <span style="color:var(--muted);font-size:13px">경매 ${fmt(e.auction_at)} · 경기 ${fmt(e.match_at)}</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><small>신청</small><b>${S.length}<em>명</em></b></div>
+      <div class="stat"><small>팀장 배정</small><b>${caps}<em> / ${e.team_count}</em></b></div>
+      <div class="stat"><small>티어 검수 완료</small><b>${tierDone}<em> / ${S.length}</em></b></div>
+      <div class="stat"><small>점수 재확인 완료</small><b>${scoreDone}<em> / ${S.length}</em></b></div>
+      <div class="stat"><small>남은 할 일</small><b>${openTasks}<em>개</em></b></div>
+    </div>
+    <div class="tabs">
+      ${[["people", "참가자", S.length], ["schedule", "일정 · 신청 마감"], ["tasks", "할 일", openTasks], ["links", "링크"]]
+        .map(([k, l, n]) => `<button data-tab="${k}" class="${tab === k ? "on" : ""}">${l}${n !== undefined ? `<b>${n}</b>` : ""}</button>`).join("")}
+    </div>
+    <div id="tabBody"></div>`;
+  $("view").querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = b.dataset.tab; renderEvent(); });
+  ({ people: renderPeople, schedule: renderSchedule, tasks: renderTasks, links: renderLinks })[tab]();
+}
+
+/* ---------- 참가자: 고치기·지우기·메모·팀장·교차검수 ---------- */
+function renderPeople() {
+  const e = detail.event;
+  const list = detail.signups.filter(s => {
+    if (search && !`${s.nick} ${s.discord_name} ${s.discord_username}`.toLowerCase().includes(search.toLowerCase())) return false;
+    if (filter === "todo") return !isDone(s, "tier") || !isDone(s, "score");
+    if (filter === "done") return isDone(s, "tier") && isDone(s, "score");
+    if (filter === "captain") return s.captain;
+    return true;
+  });
+  const checkCell = (s, kind) => {
+    const cs = checksOf(s, kind), mine = cs.some(c => c.user_id === me.user_id), n = cs.length;
+    const state = n >= NEED_CHECKS ? `<span class="chip done">완료 ${n}/${NEED_CHECKS}</span>` : n ? `<span class="chip part">${n}/${NEED_CHECKS}</span>` : `<span class="chip">0/${NEED_CHECKS}</span>`;
+    return `<div class="chk">${state}<div class="names">${cs.map(c => esc(c.name)).join(", ") || "아직 없음"}</div>
+      <button class="${mine ? "mine" : ""}" data-check="${kind}" data-id="${s.id}" data-on="${mine ? 0 : 1}">${mine ? "내 확인 취소" : "확인"}</button></div>`;
+  };
+  $("tabBody").innerHTML = `
+    <div class="toolbar">
+      <input id="fSearch" placeholder="닉네임·디스코드 이름 찾기" value="${esc(search)}">
+      <select id="fFilter">
+        ${[["all", "전체"], ["todo", "검수 덜 된 사람"], ["done", "검수 끝난 사람"], ["captain", "팀장만"]].map(([k, l]) => `<option value="${k}" ${filter === k ? "selected" : ""}>${l}</option>`).join("")}
+      </select>
+      <span style="color:var(--muted);font-size:12px">검수는 서로 다른 운영진 ${NEED_CHECKS}명이 ‘확인’을 눌러야 완료돼요. ★ = 팀장 (최대 ${e.team_count}명)</span>
+    </div>
+    <div class="table-wrap"><table class="grid">
+      <thead><tr><th>팀장</th><th>#</th><th>디스코드</th><th>게임 닉네임</th><th>최고 티어</th><th>현재 티어</th><th>포지션</th><th>점수</th><th>티어 검수</th><th>점수 계산 재확인</th><th>메모</th><th></th></tr></thead>
+      <tbody>${list.length ? list.map((s, i) => `
+        <tr class="${s.captain ? "captain" : ""}">
+          <td><button class="star ${s.captain ? "on" : ""}" data-cap="${s.id}" title="팀장 배정">★</button></td>
+          <td>${detail.signups.indexOf(s) + 1}</td>
+          <td><div class="dc">${discordImg(s.discord_avatar, s.discord_name, 26)}<div><b>${esc(s.discord_name)}</b>${s.discord_username ? `<small>@${esc(s.discord_username)}</small>` : ""}</div></div></td>
+          <td><b>${esc(s.nick)}</b>${s.updated_by ? `<div class="calc">${esc(s.updated_by)} 님이 고침</div>` : ""}</td>
+          <td>${esc(s.peak)}</td><td>${esc(s.current)}</td><td>${esc(s.pos)}</td>
+          <td><span class="score">${playerScore(s).toFixed(1)}</span></td>
+          <td>${checkCell(s, "tier")}</td>
+          <td><div class="calc">(${TIER_SCORE[s.peak]} + ${TIER_SCORE[s.current]}) ÷ 2 = ${playerScore(s).toFixed(1)}</div>${checkCell(s, "score")}</td>
+          <td><div class="memo ${s.memo ? "" : "empty"}" data-edit="${s.id}" title="${esc(s.memo)}">${s.memo ? esc(s.memo) : "메모 쓰기"}</div></td>
+          <td><div class="acts"><button data-edit="${s.id}">고치기</button><button class="del" data-del="${s.id}">지우기</button></div></td>
+        </tr>`).join("") : `<tr><td colspan="12" class="empty-view" style="padding:30px">조건에 맞는 신청이 없어요.</td></tr>`}</tbody>
+    </table></div>`;
+  $("fSearch").oninput = ev => { search = ev.target.value; const pos = ev.target.selectionStart; renderPeople(); const f = $("fSearch"); f.focus(); f.setSelectionRange(pos, pos); };
+  $("fFilter").onchange = ev => { filter = ev.target.value; renderPeople(); };
+  const body = $("tabBody");
+  body.onclick = async ev => {
+    const t = ev.target.closest("button, [data-edit]"); if (!t) return;
+    if (t.dataset.check) return mutate("signup_check", { p_signup: Number(t.dataset.id), p_kind: t.dataset.check, p_on: t.dataset.on === "1" });
+    if (t.dataset.cap) { const s = detail.signups.find(x => x.id === Number(t.dataset.cap)); return mutate("signup_update", { p_signup: s.id, p_patch: { captain: !s.captain } }); }
+    if (t.dataset.del) {
+      const s = detail.signups.find(x => x.id === Number(t.dataset.del));
+      if (confirm(`${s.nick} (${s.discord_name}) 님의 신청을 지울까요? 되돌릴 수 없어요.`)) return mutate("signup_delete", { p_signup: s.id });
+      return;
+    }
+    if (t.dataset.edit) openEdit(Number(t.dataset.edit));
+  };
+}
+
+let editing = null;
+for (const id of ["ePeak", "eCur"]) $(id).innerHTML = Object.keys(TIER_SCORE).map(t => `<option>${t}</option>`).join("");
+$("ePos").innerHTML = POSITIONS.map(p => `<option>${p}</option>`).join("");
+function openEdit(id) {
+  const s = detail.signups.find(x => x.id === id); if (!s) return;
+  editing = s;
+  $("editWho").innerHTML = `${discordImg(s.discord_avatar, s.discord_name, 26)}<div><b>${esc(s.discord_name)}</b>${s.discord_username ? `<small>@${esc(s.discord_username)}</small>` : ""}</div>`;
+  $("eNick").value = s.nick; $("ePeak").value = s.peak; $("eCur").value = s.current; $("ePos").value = s.pos; $("eMemo").value = s.memo || "";
+  $("editModal").classList.add("show");
+}
+$("btnEditSave").onclick = async () => {
+  const r = await mutate("signup_update", { p_signup: editing.id, p_patch: { nick: $("eNick").value, peak: $("ePeak").value, current: $("eCur").value, pos: $("ePos").value, memo: $("eMemo").value } });
+  if (r && r.ok) $("editModal").classList.remove("show");
+};
+
+/* ---------- 일정 · 신청 마감 ---------- */
+function renderSchedule() {
+  const e = detail.event;
+  $("tabBody").innerHTML = `
+    <div class="card">
+      <h3>신청 받기</h3>
+      <div class="big-state" style="color:${e.open ? "var(--ok)" : "var(--warn)"}">${e.open ? "지금 신청을 받고 있어요" : "지금은 신청이 닫혀 있어요"}</div>
+      <div class="seg" id="modeSeg">
+        ${[["auto", "일정대로 자동"], ["open", "지금 열기"], ["closed", "지금 마감"]].map(([k, l]) => `<button data-mode="${k}" class="${e.signup_mode === k ? "on" : ""}">${l}</button>`).join("")}
+      </div>
+      <div style="color:var(--muted);font-size:13px;line-height:1.6">
+        ‘일정대로 자동’이면 아래 신청 시작 시각에 열리고 신청 마감 시각에 닫혀요. (비워 두면 그쪽은 제한 없음)<br>
+        ‘지금 열기’·‘지금 마감’은 시각과 상관없이 바로 적용돼요.
+      </div>
+    </div>
+    <div class="card">
+      <h3>회차 일정</h3>
+      <div class="field"><label>회차 이름</label><input id="sTitle" maxlength="60" value="${esc(e.title)}"></div>
+      <div class="form-grid">
+        <div class="field"><label>신청 시작</label><input type="datetime-local" id="sOpen" value="${toLocalInput(e.opens_at)}"></div>
+        <div class="field"><label>신청 마감</label><input type="datetime-local" id="sClose" value="${toLocalInput(e.closes_at)}"></div>
+        <div class="field"><label>경매 일시</label><input type="datetime-local" id="sAuction" value="${toLocalInput(e.auction_at)}"></div>
+        <div class="field"><label>경기 일시</label><input type="datetime-local" id="sMatch" value="${toLocalInput(e.match_at)}"></div>
+      </div>
+      <div><button class="btn primary" id="btnSchedSave">일정 저장</button></div>
+      <div style="color:var(--muted);font-size:12px">신청 화면에도 신청 기간과 경매 일시가 표시돼요.</div>
+    </div>`;
+  $("modeSeg").onclick = ev => { const b = ev.target.closest("[data-mode]"); if (b) mutate("update_event", { p_id: e.id, p_patch: { signup_mode: b.dataset.mode } }); };
+  $("btnSchedSave").onclick = () => {
+    const o = $("sOpen").value, c = $("sClose").value;
+    if (o && c && new Date(c) <= new Date(o)) return toast("신청 마감이 신청 시작보다 뒤여야 해요.");
+    mutate("update_event", { p_id: e.id, p_patch: { title: $("sTitle").value, opens_at: fromLocalInput(o), closes_at: fromLocalInput(c), auction_at: fromLocalInput($("sAuction").value), match_at: fromLocalInput($("sMatch").value) } })
+      .then(r => { if (r && r.ok) toast("일정을 저장했어요."); });
+  };
+}
+
+/* ---------- 할 일 ---------- */
+function memberOptions(sel) {
+  return `<option value="">담당자 없음</option>` + members.filter(m => m.role !== "pending")
+    .map(m => `<option value="${m.user_id}" ${m.user_id === sel ? "selected" : ""}>${esc(m.name)}</option>`).join("");
+}
+function renderTasks() {
+  const now = Date.now();
+  const list = detail.tasks.filter(t => !myOnly || t.assignee === me.user_id);
+  $("tabBody").innerHTML = `
+    <div class="form-row">
+      <input type="text" id="tTitle" maxlength="100" placeholder="할 일 (예: 맵 정하기, 공지 올리기)">
+      <select id="tWho">${memberOptions(null)}</select>
+      <input type="datetime-local" id="tDue" title="언제까지">
+      <button class="btn primary" id="btnTaskAdd">추가</button>
+    </div>
+    <label class="chk" style="display:flex;gap:6px;align-items:center;font-size:13px;color:var(--muted);margin-bottom:10px"><input type="checkbox" id="tMine" ${myOnly ? "checked" : ""}> 내 할 일만 보기</label>
+    <ul class="tasks">${list.length ? list.map(t => `
+      <li class="${t.done ? "done" : ""} ${!t.done && t.due_at && t.due_at < now ? "late" : ""}" data-task="${t.id}">
+        <input type="checkbox" data-done ${t.done ? "checked" : ""}>
+        <div><div class="tt">${esc(t.title)}</div><div class="due">${t.due_at ? `${fmt(t.due_at)}까지${!t.done && t.due_at < now ? " · 기한 지남" : ""}` : "기한 없음"} · ${esc(t.created_by)} 님이 추가</div></div>
+        <select data-who>${memberOptions(t.assignee)}</select>
+        <span class="due">${t.assignee ? "" : "담당자 정해 주세요"}</span>
+        <button class="x" data-x title="지우기">×</button>
+      </li>`).join("") : `<li style="display:block;color:var(--muted)">할 일이 없어요.</li>`}</ul>`;
+  $("btnTaskAdd").onclick = async () => {
+    const title = $("tTitle").value.trim(); if (!title) return toast("할 일 내용을 적어 주세요.");
+    const r = await mutate("task_add", { p_id: detail.event.id, p_title: title, p_assignee: $("tWho").value || null, p_due: fromLocalInput($("tDue").value) });
+    if (r && r.ok) toast("할 일을 추가했어요.");
+  };
+  $("tTitle").onkeydown = ev => { if (ev.key === "Enter") $("btnTaskAdd").click(); };
+  $("tMine").onchange = ev => { myOnly = ev.target.checked; renderTasks(); };
+  const ul = $("tabBody").querySelector(".tasks");
+  ul.onchange = ev => {
+    const li = ev.target.closest("[data-task]"); if (!li) return;
+    const id = Number(li.dataset.task);
+    if (ev.target.matches("[data-done]")) mutate("task_update", { p_task: id, p_patch: { done: ev.target.checked } });
+    if (ev.target.matches("[data-who]")) mutate("task_update", { p_task: id, p_patch: { assignee: ev.target.value || null } });
+  };
+  ul.onclick = ev => {
+    const li = ev.target.closest("[data-task]");
+    if (li && ev.target.matches("[data-x]") && confirm("이 할 일을 지울까요?")) mutate("task_delete", { p_task: Number(li.dataset.task) });
+  };
+}
+
+/* ---------- 링크 ---------- */
+function pageLink(file, params) { const u = new URL(file, location.href); u.search = new URLSearchParams(params).toString(); u.hash = ""; return u.toString(); }
+function linkRow(label, url, color) { return `<div class="link-row" style="--c:${color || "var(--line)"}"><b>${esc(label)}</b><input readonly value="${esc(url)}"><button class="btn" data-copy>복사</button></div>`; }
+function renderLinks() {
+  const e = detail.event, L = detail.links;
+  let html = `<div class="card"><h3>참가 신청 (디스코드 서버에 올리기)</h3>${linkRow("참가 신청 링크", pageLink("signup.html", { s: e.signup_code }), "#5865f2")}</div>`;
+  if (L) {
+    html += `<div class="card"><h3>경매 당일 (진행자만 보여요)</h3>${linkRow("진행자 화면", pageLink("index.html", { a: e.id, k: L.host_key }), "var(--accent)")}
+      ${L.team_keys.map((k, i) => linkRow(`${i + 1}번 팀장`, pageLink("team.html", { a: e.id, k }), CONFIG.teamColors[i % CONFIG.teamColors.length])).join("")}
+      <div style="color:var(--muted);font-size:12px">팀장 링크의 팀 이름은 경매 화면에서 팀장이 정해지면 바뀌어요.</div></div>`;
+  } else html += `<div class="card"><h3>경매 당일</h3><div style="color:var(--muted)">진행자 화면과 팀장 링크는 진행자만 볼 수 있어요.</div></div>`;
+  $("tabBody").innerHTML = html;
+  $("tabBody").onclick = copyBtn;
+}
+async function copyBtn(ev) {
+  if (!ev.target.matches("[data-copy]")) return;
+  const input = ev.target.parentElement.querySelector("input");
+  try { await navigator.clipboard.writeText(input.value); } catch (err) { input.select(); document.execCommand("copy"); }
+  ev.target.textContent = "복사됨"; setTimeout(() => (ev.target.textContent = "복사"), 1500);
+}
+
+/* ---------- 운영진 관리 (진행자: 초대·승인·빼기) ---------- */
+async function renderStaff() {
+  const owner = me.role === "owner";
+  const pending = members.filter(m => m.role === "pending"), active = members.filter(m => m.role !== "pending");
+  const person = (m, btns) => `<li>${discordImg(m.avatar, m.name, 34)}<div class="grow"><b>${esc(m.name)}</b> ${m.username ? `<span style="color:var(--muted);font-size:12px">@${esc(m.username)}</span>` : ""}</div>${btns}</li>`;
+  let invite = "";
+  if (owner) { const r = await call("get_invite", { p_reset: false }); if (r) invite = pageLink("admin.html", { invite: r.code }); }
+  $("view").innerHTML = `
+    <div class="ev-head"><h2>운영진 ${owner ? "관리" : "명단"}</h2></div>
+    ${owner ? `<div class="card"><h3>운영진 초대 링크</h3>
+      ${linkRow("초대 링크", invite, "var(--ok)")}
+      <div style="color:var(--muted);font-size:13px;line-height:1.6">운영진에게 이 링크를 보내면, 디스코드로 로그인해 요청을 보내요. 아래에서 승인해야 들어올 수 있어요.<br>링크가 새어 나갔다면 새 링크로 바꾸세요. 예전 링크는 바로 쓸 수 없게 돼요.</div>
+      <div><button class="btn" id="btnInviteReset">새 링크로 바꾸기</button></div></div>
+    <div class="card"><h3>승인 기다리는 사람 ${pending.length}명</h3>
+      <ul class="people">${pending.length ? pending.map(m => person(m, `<button class="btn primary" data-dec="approve" data-u="${m.user_id}">승인</button><button class="btn" data-dec="reject" data-u="${m.user_id}">거절</button>`)).join("") : `<li style="color:var(--muted)">없어요.</li>`}</ul></div>` : ""}
+    <div class="card"><h3>운영진 ${active.length}명</h3>
+      <ul class="people">${active.map(m => person(m, m.role === "owner" ? `<span class="role owner">진행자</span>` : owner ? `<span class="role staff">운영진</span><button class="btn" data-dec="remove" data-u="${m.user_id}">빼기</button>` : `<span class="role staff">운영진</span>`)).join("")}</ul></div>`;
+  $("view").onclick = async ev => {
+    if (ev.target.matches("[data-copy]")) return copyBtn(ev);
+    const b = ev.target.closest("[data-dec]");
+    if (b) {
+      if (b.dataset.dec === "remove" && !confirm("이 사람을 운영진에서 뺄까요?")) return;
+      await mutate("staff_decide", { p_user: b.dataset.u, p_action: b.dataset.dec });
+      return renderStaff();
+    }
+    if (ev.target.id === "btnInviteReset" && confirm("새 초대 링크로 바꿀까요? 예전 링크는 더 이상 쓸 수 없어요.")) { await call("get_invite", { p_reset: true }); renderStaff(); }
+  };
+}
+$("btnStaff").onclick = () => { view = "staff"; render(); };
+
+/* ---------- 새 회차 ---------- */
+$("btnNewEvent").onclick = () => { $("nTitle").value = ""; $("newModal").classList.add("show"); setTimeout(() => $("nTitle").focus(), 50); };
+$("btnNewSave").onclick = async () => {
+  const title = $("nTitle").value.trim(); if (!title) return toast("회차 이름을 적어 주세요.");
+  const r = await call("create_event", { p_title: title, p_config: CONFIG });
+  if (!r || !r.ok) return toast(r ? r.reason : "만들지 못했어요.");
+  $("newModal").classList.remove("show");
+  ping(); tab = "schedule"; selectEvent(r.id);
+};
+document.querySelectorAll(".modal").forEach(m => m.addEventListener("click", ev => { if (ev.target === m || ev.target.matches("[data-close]")) m.classList.remove("show"); }));
+
+boot();
+</script>
+</body>
+</html>

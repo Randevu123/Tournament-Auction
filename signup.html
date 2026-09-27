@@ -15,6 +15,10 @@
   .hero h1 { font-family: var(--num); font-weight: 400; font-size: clamp(40px, 12vw, 64px); line-height: 1.05; margin: 8px 0; text-shadow: 0 0 30px rgba(255,70,85,.35); }
   .hero .count { color: var(--muted); font-size: 14px; }
   .hero .count b { color: var(--gold); font-family: var(--num); font-weight: 400; font-size: 22px; }
+  .sched { margin-top: 10px; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; font-size: 13px; }
+  .sched span { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; color: var(--muted); }
+  .sched b { color: var(--text); }
+  .closed-box { text-align: center; background: rgba(255,176,32,.08); border: 1px solid var(--warn); color: var(--warn); border-radius: 14px; padding: 14px; font-weight: 700; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: grid; gap: 14px; }
   .card h2 { margin: 0; font-size: 13px; letter-spacing: 2px; color: var(--muted); font-weight: 700; }
   .step { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; margin-right: 8px; }
@@ -56,10 +60,12 @@
 <body>
 <div class="wrap">
   <div class="hero">
-    <div class="kicker">VALORANT 내전</div>
+    <div class="kicker" id="kicker">VALORANT 내전</div>
     <h1>참가 신청</h1>
     <div class="count" id="count"></div>
+    <div class="sched" id="sched"></div>
   </div>
+  <div class="closed-box" id="closedBox" hidden></div>
 
   <div class="error-box" id="errorBox" hidden><h2>링크를 확인해 주세요</h2><p id="errorMsg"></p></div>
 
@@ -130,7 +136,8 @@
    ===================================================================== */
 const $ = id => document.getElementById(id);
 const CODE = new URLSearchParams(location.search).get("s");
-let sb = null, session = null, pos = "", done = false;
+let sb = null, session = null, pos = "", done = false, info = null;
+function when(ms) { return new Date(ms).toLocaleString("ko-KR", { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" }); }
 
 function fail(msg) { $("errorBox").hidden = false; $("main").hidden = true; $("errorMsg").textContent = msg; }
 
@@ -159,6 +166,7 @@ function missing() {
 }
 function check() {
   const hint = $("hint");
+  if (info && !info.open) { $("btnSubmit").disabled = true; hint.className = "hint warn"; hint.textContent = "지금은 신청 기간이 아니에요."; return; }
   if (!session) { $("btnSubmit").disabled = true; hint.className = "hint warn"; hint.textContent = "먼저 디스코드로 로그인해야 신청할 수 있어요."; return; }
   const m = missing();
   $("btnSubmit").disabled = m.length > 0;
@@ -177,7 +185,7 @@ function discordInfo(user) {
 function renderLogin() {
   $("loginOut").hidden = !!session;
   $("loginIn").hidden = !session;
-  $("fs").disabled = !session || done;
+  $("fs").disabled = !session || done || (info && !info.open);
   if (session) {
     const d = discordInfo(session.user);
     $("meAvatar").innerHTML = d.avatar ? `<img src="${esc(d.avatar)}" alt="">` : avatar({ name: d.name }, 52);
@@ -205,7 +213,18 @@ function showDone(s, already) {
 async function refreshCount() {
   const { data } = await sb.rpc("signup_info", { p_code: CODE });
   if (!data) return fail("신청 링크가 올바르지 않거나 경매가 없어졌어요. 진행자에게 문의해 주세요.");
+  info = data;
+  if (data.title) { $("kicker").textContent = data.title; document.title = `${data.title} 참가 신청`; }
   $("count").innerHTML = `지금까지 <b>${data.count}</b>명 신청`;
+  const parts = [];
+  if (data.opens_at || data.closes_at) parts.push(`신청 <b>${data.opens_at ? when(data.opens_at) : "지금"} ~ ${data.closes_at ? when(data.closes_at) : "마감 시 안내"}</b>`);
+  if (data.auction_at) parts.push(`경매 <b>${when(data.auction_at)}</b>`);
+  if (data.match_at) parts.push(`경기 <b>${when(data.match_at)}</b>`);
+  $("sched").innerHTML = parts.map(p => `<span>${p}</span>`).join("");
+  const cb = $("closedBox");
+  cb.hidden = data.open;
+  cb.textContent = data.open ? "" : data.opens_at && Date.now() < data.opens_at ? `신청은 ${when(data.opens_at)}부터 받아요.` : "신청이 마감됐어요. 이미 신청했다면 로그인해서 확인할 수 있어요.";
+  renderLogin();
 }
 
 async function afterLogin() {

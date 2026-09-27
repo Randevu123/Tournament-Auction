@@ -17,6 +17,7 @@
     <p id="landingMsg">새 경매를 만들면 진행자 링크 1개와 팀장 전용 링크가 팀 수만큼 생깁니다.</p>
     <div class="row" style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn primary big" id="btnCreate">새 온라인 경매 만들기</button>
+      <a class="btn big" href="admin.html" style="text-decoration:none">운영진 콘솔</a>
       <a class="btn big" href="practice.html" style="text-decoration:none">혼자 연습하기 (1단계 연습판)</a>
     </div>
   </div>
@@ -36,6 +37,7 @@
     <span class="state-line" id="progress"></span>
     <button class="btn" id="btnSignups">신청 명단 <b id="signupCount">0</b></button>
     <button class="btn" id="btnLinks">팀장 링크</button>
+    <a class="btn" id="btnConsole" style="text-decoration:none">운영진 콘솔</a>
     <button class="btn" id="btnEdit">선수 관리</button>
     <button class="btn primary" id="btnStart">경매 시작 (Space)</button>
     <button class="btn" id="btnPause">일시정지</button>
@@ -214,6 +216,7 @@ async function boot() {
     return;
   }
   rememberHost(id, key);
+  $("btnConsole").href = new URL("admin.html", location.href).toString() + "?" + new URLSearchParams({ claim: id, k: key });
   $("app").hidden = false;
   let chat = null;
   net = connect({
