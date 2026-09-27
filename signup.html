@@ -109,6 +109,10 @@
             <label>포지션<span class="req">*</span></label>
             <div class="pos-pick" id="posPick"></div>
           </div>
+          <div class="field">
+            <label>주 요원 <span style="color:var(--muted);font-weight:400">(1~3개, 잘하는 순서대로 누르기)</span><span class="req">*</span></label>
+            <div id="agentPick"></div>
+          </div>
           <div class="score-line" id="scoreLine"></div>
           <button class="submit" id="btnSubmit" type="submit" disabled>신청하기</button>
         </fieldset>
@@ -154,6 +158,7 @@ $("posPick").addEventListener("click", e => {
   check();
 });
 ["nick", "peak", "current"].forEach(id => $(id).addEventListener("input", check));
+const agentPick = mountAgentPicker($("agentPick"), [], check);
 
 // 빠진 항목이 있으면 신청 버튼을 끄고 무엇이 빠졌는지 알려 줌
 function missing() {
@@ -162,6 +167,7 @@ function missing() {
   if (!$("peak").value) m.push("최고 티어");
   if (!$("current").value) m.push("현재 티어");
   if (!pos) m.push("포지션");
+  if (!agentPick.get().length) m.push("주 요원");
   return m;
 }
 function check() {
@@ -203,7 +209,7 @@ function showDone(s, already) {
   $("doneSub").textContent = already ? "이 디스코드 계정으로는 한 번만 신청할 수 있어요." : "진행자 화면 명단에 올라갔어요.";
   $("doneTable").innerHTML = [
     ["디스코드", `${esc(s.discord_name)}${s.discord_username ? ` <span style="color:var(--muted)">@${esc(s.discord_username)}</span>` : ""}`],
-    ["게임 닉네임", esc(s.nick)], ["최고 티어", esc(s.peak)], ["현재 티어", esc(s.current)], ["포지션", esc(s.pos)],
+    ["게임 닉네임", esc(s.nick)], ["최고 티어", esc(s.peak)], ["현재 티어", esc(s.current)], ["포지션", esc(s.pos)], ["주 요원", agentsOf(s).length ? agentChips(s) : "-"],
     ["티어 점수", playerScore(s).toFixed(1)],
   ].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
   if (!already) bumpEl($("doneCard"), "pop");
@@ -250,7 +256,7 @@ $("form").addEventListener("submit", async e => {
   $("btnSubmit").disabled = true;
   $("btnSubmit").textContent = "보내는 중…";
   const { data, error } = await sb.rpc("submit_signup", {
-    p_code: CODE, p_nick: $("nick").value.trim(), p_peak: $("peak").value, p_current: $("current").value, p_pos: pos,
+    p_code: CODE, p_nick: $("nick").value.trim(), p_peak: $("peak").value, p_current: $("current").value, p_pos: pos, p_agents: agentPick.get(),
   });
   $("btnSubmit").textContent = "신청하기";
   if (error) { toast("서버에 닿지 못했어요. 잠시 뒤 다시 눌러 주세요."); return check(); }

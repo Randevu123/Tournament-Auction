@@ -76,6 +76,7 @@
         <div>
           <div class="p-name" id="pName">-</div>
           <span class="p-pos" id="pPos">-</span>
+          <div class="p-agents" id="pAgents"></div>
         </div>
       </div>
       <div class="p-motto" id="pMotto"></div>
@@ -430,6 +431,7 @@ function startDraw() {
   $("btnDrawDone").disabled = true;
   $("btnSkipDraw").disabled = false;
   $("drawOverlay").classList.add("show");
+  net.show({ kind: "draw", order: drawOrder.map(p => p.id) });   // 방송 화면에서도 같은 순서로 추첨 연출
   stepDraw();
 }
 function showRoulette(p, locked, no) {
@@ -465,6 +467,7 @@ function stepDraw() {
 }
 function skipDraw() {
   clearTimeout(drawTimer);
+  net.show({ kind: "draw-skip" });
   while (drawIndex < drawOrder.length) { appendOrder(drawIndex, drawOrder[drawIndex]); drawIndex++; }
   finishDraw();
 }
@@ -487,7 +490,7 @@ $("btnDrawDone").addEventListener("click", async () => {
 let draft = [];
 function openEditor() {
   if (!S || S.status !== "setup") return toast("경매 중에는 고칠 수 없어요. ‘처음부터 다시’를 누른 뒤 고쳐 주세요.");
-  draft = S.players.map(p => ({ name: p.name, peak: p.peak, current: p.current, pos: p.pos, captain: p.captain, motto: p.motto, photo: p.photo || "", signup_id: p.signup_id, score: p.score }));
+  draft = S.players.map(p => ({ name: p.name, peak: p.peak, current: p.current, pos: p.pos, captain: p.captain, motto: p.motto, photo: p.photo || "", signup_id: p.signup_id, score: p.score, agents: agentsOf(p) }));
   buildEditor();
   $("editOverlay").classList.add("show");
 }
@@ -620,6 +623,7 @@ function render(prev) {
   $("pPhoto").innerHTML = p ? avatar(p, 130) : "";
   $("pName").textContent = p ? p.name : (s.status === "done" ? "경매 종료" : "-");
   $("pPos").textContent = p ? p.pos : "-";
+  $("pAgents").innerHTML = p ? agentChips(p, "lg") : "";
   $("pMotto").textContent = p && p.motto ? `“${p.motto}”` : "";
   $("pPeak").innerHTML = p ? `${esc(p.peak)} <em>${tierPoints(p.peak)}점</em>` : "-";
   $("pCur").innerHTML = p ? `${esc(p.current)} <em>${tierPoints(p.current)}점</em>` : "-";

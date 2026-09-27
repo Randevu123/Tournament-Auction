@@ -75,7 +75,7 @@
   .next { padding: 26px 22px; }
   .next h3 { margin: 0 0 14px; font-size: 20px; letter-spacing: 4px; color: var(--accent); }
   .next ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-  .next li { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 12px; background: rgba(255,255,255,.04); font-size: 22px; font-weight: 700; }
+  .next li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 12px; background: rgba(255,255,255,.04); font-size: 20px; font-weight: 700; min-width: 0; }
   .next li .n { font-family: var(--num); font-weight: 400; color: var(--muted); width: 26px; }
   .next li .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .next li .s { color: var(--gold); font-family: var(--num); font-weight: 400; }
@@ -123,6 +123,29 @@
   .done .result-left { font-size: 20px; }
   .done.many .rt-table td:nth-child(3) { display: none; }
 
+  .pagents { margin-top: 14px; min-height: 0; }
+  .pagents .agents { gap: 8px; }
+  .pagents .ag { font-size: 24px; padding: 4px 16px; }
+  .pagents .ag:first-child { background: rgba(255,209,102,.28); }
+
+  /* 순서 추첨 (진행자 화면에서 추첨하면 같은 연출이 여기에도 나옴) */
+  .drawov { position: absolute; inset: 0; z-index: 30; background: radial-gradient(1100px 600px at 50% -10%, rgba(255,70,85,.22), transparent 60%), #06070c; padding: 40px 48px; display: grid; grid-template-rows: auto 1fr; gap: 26px; }
+  .drawov .dh { text-align: center; font-family: var(--num); font-size: 76px; }
+  .drawov .dh span { color: var(--accent); }
+  .dwrap { display: grid; grid-template-columns: 640px 1fr; gap: 40px; min-height: 0; }
+  .roul { align-self: start; display: grid; justify-items: center; gap: 18px; padding: 40px; border-radius: 28px; background: linear-gradient(160deg, #1a1f30, #10131d); border: 1px solid var(--line); }
+  .roul .no { font-family: var(--num); font-size: 48px; color: var(--accent); }
+  .roul .nm { font-family: var(--num); font-size: 72px; text-align: center; word-break: break-all; line-height: 1.1; }
+  .roul .sub { color: var(--muted); font-size: 28px; min-height: 40px; text-align: center; }
+  .roul.locked .nm { color: var(--gold); text-shadow: 0 0 34px rgba(255,209,102,.55); animation: bump .35s ease; }
+  .roul .av { border-radius: 24px; }
+  .dlist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 58px; gap: 10px; align-content: start; overflow: hidden; }
+  .dlist li { display: flex; align-items: center; gap: 12px; padding: 0 14px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid var(--line); font-size: 24px; font-weight: 700; animation: slidein .35s ease; min-width: 0; }
+  .dlist li b { font-family: var(--num); font-weight: 400; color: var(--accent); width: 40px; font-size: 28px; flex: none; }
+  .dlist li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dlist.many { grid-template-columns: repeat(4, 1fr); grid-auto-rows: 50px; }
+  .dlist.many li { font-size: 20px; }
+
   .offline { position: absolute; right: 18px; bottom: 10px; font-size: 14px; color: #555c70; }
   .flash-title { font-size: 220px; }
   .flash-sub { font-size: 60px; }
@@ -157,6 +180,7 @@
           <div class="info">
             <div class="pname" id="pName"></div>
             <span class="ppos" id="pPos"></span>
+            <div class="pagents" id="pAgents"></div>
             <div class="pmotto" id="pMotto"></div>
             <div class="ptiers">
               <div><small>최고 티어</small><b id="pPeak"></b></div>
@@ -194,6 +218,13 @@
         <div id="resultBody"></div>
       </div>
     </div>
+    <div class="drawov" id="drawOv" hidden>
+      <div class="dh">경매 순서 <span>추첨</span></div>
+      <div class="dwrap">
+        <div class="roul" id="roul"><div class="no" id="dNo"></div><div id="dPhoto"></div><div class="nm" id="dName"></div><div class="sub" id="dSub"></div></div>
+        <ol class="dlist" id="dList"></ol>
+      </div>
+    </div>
     <div class="offline" id="offline" hidden>다시 연결 중</div>
     <div class="flash" id="flash"><div class="flash-inner"><div id="flashPhoto"></div><div class="flash-title" id="flashTitle"></div><div class="flash-sub" id="flashSub"></div></div></div>
   </div>
@@ -228,7 +259,8 @@ async function boot() {
   const { data: who, error } = await sb.rpc("whoami", { p_id: id, p_key: key });
   if (error) { $("msg").textContent = "서버에 연결하지 못했어요. 잠시 뒤 새로고침돼요."; return setTimeout(() => location.reload(), 10000); }
   if (!who || who.role !== "screen") return ($("msg").textContent = "방송 화면 링크가 올바르지 않아요. 링크를 다시 복사해 주세요.");
-  net = connect({ id, key, presenceKey: "screen", presenceInfo: { role: "screen" }, chat: false, onState, onChat: () => {}, onConn: setConn });
+  net = connect({ id, key, presenceKey: "screen", presenceInfo: { role: "screen" }, chat: false, onState, onChat: () => {}, onConn: setConn,
+    onEvent: { show: onShow } });
 }
 
 let offTimer = null;
@@ -252,6 +284,59 @@ function onState(s) {
     if (s.bid_team !== null) bumpEl(document.querySelector(`.tm[data-id="${s.bid_team}"]`), "pulse");
   }
   render(prev);
+  // 추첨한 순서가 저장되면(경매 준비 → 시작 대기) 추첨 화면을 잠시 보여 준 뒤 닫음
+  if (drawing && s.status !== "setup" && !drawCloseTimer) drawCloseTimer = setTimeout(closeDraw, drawIdx < drawOrder.length ? 600 : 3000);
+}
+
+/* ---------- 순서 추첨: 진행자 화면이 보낸 순서로 같은 룰렛 연출 ---------- */
+let drawing = false, drawOrder = [], drawIdx = 0, drawTimer = null, drawCloseTimer = null;
+function onShow(m) {
+  if (!S) return;
+  if (m.kind === "draw" && Array.isArray(m.order) && S.status === "setup") startDraw(m.order);   // 추첨은 경매 준비 중에만
+  else if (m.kind === "draw-skip" && drawing) skipDraw();
+  else if (m.kind === "draw-close") closeDraw();
+}
+function startDraw(ids) {
+  clearTimeout(drawTimer); clearTimeout(drawCloseTimer); drawCloseTimer = null;
+  drawOrder = ids.map(id => S.players.find(p => p.id === id)).filter(Boolean);
+  if (!drawOrder.length) return;
+  drawing = true; drawIdx = 0;
+  $("dList").innerHTML = "";
+  $("dList").classList.toggle("many", drawOrder.length > 36);
+  $("drawOv").hidden = false;
+  stepDraw();
+}
+function showRoul(p, locked, no) {
+  $("roul").classList.toggle("locked", locked);
+  $("dNo").textContent = `${no}번`;
+  $("dPhoto").innerHTML = avatar(p, 220);
+  $("dName").textContent = p.name;
+  $("dSub").innerHTML = locked ? `${esc(p.pos)} · ${esc(p.peak)} / ${esc(p.current)} ${agentChips(p, "lg")}` : "";
+}
+function addDrawn(i, p) {
+  const li = document.createElement("li");
+  li.innerHTML = `<b>${i + 1}</b>${avatar(p, 36)}<span>${esc(p.name)}</span>`;
+  $("dList").appendChild(li);
+}
+function stepDraw() {                   // 진행자 화면과 같은 박자 (한 명당 약 1초)
+  if (drawIdx >= drawOrder.length) return finishDraw();
+  const rest = drawOrder.slice(drawIdx);
+  let spins = 0; const total = rest.length > 1 ? 7 : 0;
+  const spin = () => {
+    if (spins < total) { showRoul(rest[Math.floor(Math.random() * rest.length)], false, drawIdx + 1); spins++; drawTimer = setTimeout(spin, 35 + spins * 12); }
+    else { showRoul(drawOrder[drawIdx], true, drawIdx + 1); addDrawn(drawIdx, drawOrder[drawIdx]); drawIdx++; drawTimer = setTimeout(stepDraw, 380); }
+  };
+  spin();
+}
+function skipDraw() {
+  clearTimeout(drawTimer);
+  while (drawIdx < drawOrder.length) { addDrawn(drawIdx, drawOrder[drawIdx]); drawIdx++; }
+  finishDraw();
+}
+function finishDraw() { clearTimeout(drawTimer); $("dNo").textContent = "추첨 완료"; }
+function closeDraw() {
+  clearTimeout(drawTimer); clearTimeout(drawCloseTimer); drawCloseTimer = null;
+  drawing = false; $("drawOv").hidden = true;
 }
 
 function render(prev) {
@@ -304,6 +389,7 @@ function renderLot(s) {
   } else if (p && !$("pPhoto").querySelector("img") && p.photo) $("pPhoto").innerHTML = avatar(p, 260);
   $("pName").textContent = p ? p.name : "-";
   $("pPos").textContent = p ? p.pos : "-";
+  $("pAgents").innerHTML = p ? agentChips(p) : "";
   $("pMotto").textContent = p && p.motto ? `“${p.motto}”` : "";
   $("pPeak").textContent = p ? p.peak : "-";
   $("pCur").textContent = p ? p.current : "-";

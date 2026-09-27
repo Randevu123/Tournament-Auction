@@ -215,7 +215,7 @@ function render(prev) {
       : lead.idx === ME ? `<span class="mine-lead">우리 팀이 최고가!</span>` : `<span style="color:${esc(lead.color)}">${esc(lead.name)} 최고가</span>`;
     $("lot").innerHTML = `
       <div class="card-label">NOW ON AUCTION</div>
-      <div class="p-top">${avatar(p, 96)}<div><div class="p-name">${esc(p.name)}</div><span class="p-pos">${esc(p.pos)}</span></div></div>
+      <div class="p-top">${avatar(p, 96)}<div><div class="p-name">${esc(p.name)}</div><span class="p-pos">${esc(p.pos)}</span><div class="p-agents">${agentChips(p, "lg")}</div></div></div>
       ${p.motto ? `<div class="p-motto">“${esc(p.motto)}”</div>` : ""}
       <div class="p-tiers">
         <div><small>최고 티어</small><b>${esc(p.peak)} <em>${tierPoints(p.peak)}점</em></b></div>

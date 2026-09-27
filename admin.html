@@ -134,7 +134,9 @@
   @media (max-width: 900px) { .log-list li { grid-template-columns: 1fr; gap: 2px; } }
   .modal { position: fixed; inset: 0; background: rgba(5,6,10,.85); z-index: 45; display: none; place-items: center; padding: 16px; }
   .modal.show { display: grid; }
-  .modal .box { width: min(520px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; display: grid; gap: 12px; }
+  .modal .box { width: min(520px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; display: grid; gap: 12px; }
+  #editModal .box { width: min(640px, 100%); }
+  #editModal .agent-pick button { padding: 5px 9px; font-size: 13px; }
   .modal h3 { margin: 0; font-family: var(--num); font-weight: 400; font-size: 26px; }
   .modal textarea { min-height: 70px; resize: vertical; }
   .modal .row { display: flex; gap: 8px; justify-content: flex-end; }
@@ -181,6 +183,7 @@
     <div class="field"><label>점수 직접 입력 (비우면 자동)</label><input id="eScore" type="number" step="0.1" min="0" max="1000" placeholder="자동"></div>
   </div>
   <div class="calc" id="eCalc"></div>
+  <div class="field"><label>주 요원 (최대 3개, 누른 순서대로)</label><div id="eAgents"></div></div>
   <div class="field"><label>운영자 메모 (참가자에게는 안 보여요)</label><textarea id="eMemo" maxlength="200"></textarea></div>
   <div class="warn-note">티어를 바꾸면 이 사람의 티어 검수와 점수 재확인이 처음부터 다시 시작돼요.</div>
   <div class="row"><button class="btn" data-close>닫기</button><button class="btn primary" id="btnEditSave">저장</button></div>
@@ -481,14 +484,14 @@ function renderPeople() {
       <span style="color:var(--muted);font-size:12px">검수는 서로 다른 운영자 ${NEED_CHECKS}명이 ‘확인’을 눌러야 완료돼요. ★ = 팀장 (팀 수 = 팀장 수, 최대 8명)</span>
     </div>
     <div class="table-wrap"><table class="grid">
-      <thead><tr><th>팀장</th><th>#</th><th>디스코드</th><th>게임 닉네임</th><th>최고 티어</th><th>현재 티어</th><th>포지션</th><th>점수</th><th>티어 검수</th><th>점수 계산 재확인</th><th>메모</th><th></th></tr></thead>
+      <thead><tr><th>팀장</th><th>#</th><th>디스코드</th><th>게임 닉네임</th><th>최고 티어</th><th>현재 티어</th><th>포지션 · 주 요원</th><th>점수</th><th>티어 검수</th><th>점수 계산 재확인</th><th>메모</th><th></th></tr></thead>
       <tbody>${list.length ? list.map((s, i) => `
         <tr class="${s.captain ? "captain" : ""}">
           <td><button class="star ${s.captain ? "on" : ""}" data-cap="${s.id}" title="팀장 배정" ${RO ? "disabled" : ""}>★</button></td>
           <td>${detail.signups.indexOf(s) + 1}</td>
           <td><div class="dc">${discordImg(s.discord_avatar, s.discord_name, 26)}<div><b>${esc(s.discord_name)}</b>${s.discord_username ? `<small>@${esc(s.discord_username)}</small>` : ""}</div></div></td>
           <td><b>${esc(s.nick)}</b>${s.updated_by ? `<div class="calc">${esc(s.updated_by)} 님이 고침</div>` : ""}</td>
-          <td>${esc(s.peak)}</td><td>${esc(s.current)}</td><td>${esc(s.pos)}</td>
+          <td>${esc(s.peak)}</td><td>${esc(s.current)}</td><td>${esc(s.pos)}${agentChips(s, "sm")}</td>
           <td><span class="score">${playerScore(s).toFixed(1)}</span>${s.score != null ? `<div class="calc">직접 정함</div>` : ""}</td>
           <td>${checkCell(s, "tier")}</td>
           <td><div class="calc">${scoreFormula(s)}${s.score != null ? ` → 직접 정한 점수 <b style="color:var(--gold)">${Number(s.score).toFixed(1)}</b>` : ""}</div>${checkCell(s, "score")}</td>
@@ -513,7 +516,7 @@ function renderPeople() {
   };
 }
 
-let editing = null;
+let editing = null, editAgents = null;
 for (const id of ["ePeak", "eCur"]) $(id).innerHTML = Object.keys(TIER_SCORE).map(t => `<option>${t}</option>`).join("");
 $("ePos").innerHTML = POSITIONS.map(p => `<option>${p}</option>`).join("");
 function openEdit(id) {
@@ -522,6 +525,7 @@ function openEdit(id) {
   $("editWho").innerHTML = `${discordImg(s.discord_avatar, s.discord_name, 26)}<div><b>${esc(s.discord_name)}</b>${s.discord_username ? `<small>@${esc(s.discord_username)}</small>` : ""}</div>`;
   $("eNick").value = s.nick; $("ePeak").value = s.peak; $("eCur").value = s.current; $("ePos").value = s.pos; $("eMemo").value = s.memo || "";
   $("eScore").value = s.score != null ? s.score : "";
+  editAgents = mountAgentPicker($("eAgents"), agentsOf(s));
   updateEditCalc();
   $("editModal").classList.add("show");
 }
@@ -533,7 +537,7 @@ function updateEditCalc() {
 $("btnEditSave").onclick = async () => {
   const sc = $("eScore").value.trim();
   if (sc !== "" && !(Number(sc) >= 0 && Number(sc) <= 1000)) return toast("점수는 0에서 1000 사이로 적어 주세요.");
-  const r = await mutate("signup_update", { p_signup: editing.id, p_patch: { nick: $("eNick").value, peak: $("ePeak").value, current: $("eCur").value, pos: $("ePos").value, memo: $("eMemo").value, score: sc === "" ? null : Number(sc) } });
+  const r = await mutate("signup_update", { p_signup: editing.id, p_patch: { nick: $("eNick").value, peak: $("ePeak").value, current: $("eCur").value, pos: $("ePos").value, agents: editAgents.get(), memo: $("eMemo").value, score: sc === "" ? null : Number(sc) } });
   if (r && r.ok) $("editModal").classList.remove("show");
 };
 
@@ -853,9 +857,9 @@ async function downloadLogCsv(scope) {
 function downloadPeopleCsv() {
   if (!detail || !detail.signups.length) return toast("내려받을 신청이 없어요.");
   const names = (x, kind) => checksOf(x, kind).map(c => c.name).join(" / ");
-  const rows = [["번호", "게임 닉네임", "디스코드 이름", "디스코드 아이디", "최고 티어", "현재 티어", "포지션",
+  const rows = [["번호", "게임 닉네임", "디스코드 이름", "디스코드 아이디", "최고 티어", "현재 티어", "포지션", "주 요원",
                  "티어 점수(최종)", "자동 점수", "직접 정한 점수", "팀장", "티어 검수", "티어 검수한 사람", "점수 재확인", "점수 재확인한 사람", "메모", "신청 시각"]]
-    .concat(detail.signups.map((x, i) => [i + 1, x.nick, x.discord_name, x.discord_username ? "@" + x.discord_username : "", x.peak, x.current, x.pos,
+    .concat(detail.signups.map((x, i) => [i + 1, x.nick, x.discord_name, x.discord_username ? "@" + x.discord_username : "", x.peak, x.current, x.pos, agentsOf(x).join(", "),
       playerScore(x).toFixed(1), autoScore(x).toFixed(1), x.score != null ? Number(x.score).toFixed(1) : "", x.captain ? "팀장" : "",
       `${checksOf(x, "tier").length}/${NEED_CHECKS}${isDone(x, "tier") ? " 완료" : ""}`, names(x, "tier"),
       `${checksOf(x, "score").length}/${NEED_CHECKS}${isDone(x, "score") ? " 완료" : ""}`, names(x, "score"), x.memo || "", csvStamp(x.at)]));

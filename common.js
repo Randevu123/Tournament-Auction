@@ -68,6 +68,41 @@ function round1(n) { return Math.round(n * 10) / 10; }
 
 /* [3] 가짜 선수 25명 (팀장 5명 + 경매 선수 20명) */
 const POSITIONS = ["타격대", "척후대", "감시자", "전략가"];
+// 주 요원 고르기 목록 (2026년 9월 기준 29명). 새 요원이 나오면 알맞은 역할 줄에 이름만 더하면 됨
+const AGENTS = {
+  "타격대": ["제트", "레이즈", "레이나", "피닉스", "요루", "네온", "아이소", "웨이레이"],
+  "척후대": ["소바", "브리치", "스카이", "케이/오", "페이드", "게코", "테호"],
+  "감시자": ["킬조이", "사이퍼", "세이지", "체임버", "데드록", "바이스", "비토"],
+  "전략가": ["브림스톤", "바이퍼", "오멘", "아스트라", "하버", "클로브", "믹스"],
+};
+const MAX_AGENTS = 3;
+// 주 요원 고르기 칸 (신청 화면·운영자 콘솔이 함께 씀). 누르면 고르고 다시 누르면 빠짐, 최대 3개
+function mountAgentPicker(root, selected, onChange) {
+  const picked = selected.slice(0, MAX_AGENTS);
+  function draw() {
+    root.className = "agent-pick";
+    root.innerHTML = Object.entries(AGENTS).map(([role, list]) => `<div class="role"><small>${role}</small><div>${list.map(a => {
+      const i = picked.indexOf(a);
+      return `<button type="button" data-agent="${esc(a)}" class="${i >= 0 ? "on" : ""}">${i >= 0 ? `<span class="no">${i + 1}</span>` : ""}${esc(a)}</button>`;
+    }).join("")}</div></div>`).join("");
+  }
+  root.onclick = e => {
+    const b = e.target.closest("[data-agent]"); if (!b) return;
+    const a = b.dataset.agent, i = picked.indexOf(a);
+    if (i >= 0) picked.splice(i, 1);
+    else if (picked.length >= MAX_AGENTS) return toast(`주 요원은 ${MAX_AGENTS}개까지 고를 수 있어요. 먼저 하나를 빼 주세요.`);
+    else picked.push(a);
+    draw(); onChange && onChange(picked.slice());
+  };
+  draw();
+  return { get: () => picked.slice() };
+}
+function agentsOf(p) { return Array.isArray(p && p.agents) ? p.agents : []; }
+// 주 요원 칩 (없으면 빈 문자열)
+function agentChips(p, cls = "") {
+  const a = agentsOf(p);
+  return a.length ? `<span class="agents ${cls}">${a.map(x => `<span class="ag">${esc(x)}</span>`).join("")}</span>` : "";
+}
 const PLAYERS_SEED = [
   ["새벽고양이", "불멸 2", "초월자 3", "타격대", true, "우승 아니면 은퇴합니다"],
   ["한강라면", "다이아몬드 1", "플래티넘 3", "전략가", true, "연막 하나는 자신 있어요"],
@@ -97,7 +132,8 @@ const PLAYERS_SEED = [
 ];
 function seedProfiles() {
   return PLAYERS_SEED.map(([name, peak, current, pos, captain, motto], i) =>
-    ({ id: i, name, peak, current, pos, captain, motto, photo: "" }));
+    ({ id: i, name, peak, current, pos, captain, motto, photo: "",
+       agents: [0, 3].slice(0, 1 + (i % 2)).map(k => AGENTS[pos][(i + k) % AGENTS[pos].length]) }));   // 연습용 주 요원 1~2개
 }
 // 1단계 연습판에서 고쳐 둔 선수 정보가 있으면 그것을 씀
 function localProfiles() {
@@ -179,7 +215,7 @@ function isConfigured() {
    - 조작(입찰, 시작 등)은 서버 함수로 보내고, 서버가 순서대로 하나씩 처리합니다.
    - 처리 뒤 "바뀌었어요" 신호를 실시간 채널로 보내면, 다른 화면이 새 상태를 받아 옵니다.
    - 신호를 놓쳐도 4초마다 한 번씩 스스로 확인하므로, 새로고침·끊김 뒤에도 따라잡습니다. */
-function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresence, onConn, chat = true }) {
+function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresence, onConn, chat = true, onEvent = {} }) {
   const cfg = window.AUCTION_CONFIG;
   const sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -268,6 +304,7 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresen
   channel
     .on("broadcast", { event: "changed" }, ({ payload }) => { if (!payload || payload.v > version) refresh(); })
     .on("broadcast", { event: "chat" }, ({ payload }) => chat && addChat([payload]))
+    .on("broadcast", { event: "show" }, ({ payload }) => onEvent.show && onEvent.show(payload || {}))
     .on("presence", { event: "sync" }, () => onPresence && onPresence(channel.presenceState()))
     .subscribe(status => {
       onConn && onConn(status);
@@ -295,6 +332,8 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresen
   refresh(); refreshChat();
   return {
     sb, act, sendChat, refresh,
+    // 화면 연출 신호 (예: 순서 추첨) — 방송 화면이 받아서 같은 연출을 보여 줌
+    show: payload => channel.send({ type: "broadcast", event: "show", payload }),
     rpc: (fn, args = {}) => rpc(fn, { p_id: id, p_key: key, ...args }),
     serverNow: () => Date.now() + offset,
     get state() { return state; },
@@ -398,9 +437,9 @@ function resultHtml(state, { reveal = false, discord = true } = {}) {
 // 엑셀(.xlsx) 파일: 시트1 "팀 구성", 시트2 "팀 요약" (+ 남은 선수가 있으면 시트3)
 function downloadResultXlsx(state, title) {
   const teams = resultTeams(state);
-  const rows = [["팀", "구분", "선수 닉네임", "디스코드 이름", "최고 티어", "현재 티어", "티어 점수", "포지션", "낙찰가", "비고"]];
+  const rows = [["팀", "구분", "선수 닉네임", "디스코드 이름", "최고 티어", "현재 티어", "티어 점수", "포지션", "주 요원", "낙찰가", "비고"]];
   teams.forEach(({ team: t, roster }) => roster.forEach(p => rows.push([
-    t.name, howLabel(p), p.name, p.discord || "", p.peak, p.current, Number(playerScore(p).toFixed(1)), p.pos,
+    t.name, howLabel(p), p.name, p.discord || "", p.peak, p.current, Number(playerScore(p).toFixed(1)), p.pos, agentsOf(p).join(", "),
     p.how === "bid" ? p.price : 0, p.how === "random" ? "유찰되어 무작위로 배정됨" : p.how === "captain" ? "팀장" : ""])));
   const summary = [["팀", "팀장", "인원", "시작 포인트", "핸디캡", "쓴 포인트", "남은 포인트", "티어 점수 합계", "티어 점수 평균"]];
   teams.forEach(({ team: t, roster, start, used, sum, avg }) => summary.push([
@@ -414,14 +453,14 @@ function downloadResultXlsx(state, title) {
   if (window.XLSX) {
     const wb = XLSX.utils.book_new();
     const ws1 = XLSX.utils.aoa_to_sheet(rows);
-    ws1["!cols"] = [14, 18, 16, 16, 12, 12, 9, 9, 8, 22].map(w => ({ wch: w }));
+    ws1["!cols"] = [14, 18, 16, 16, 12, 12, 9, 9, 20, 8, 22].map(w => ({ wch: w }));
     const ws2 = XLSX.utils.aoa_to_sheet(summary);
     ws2["!cols"] = [16, 14, 6, 11, 8, 10, 11, 13, 13].map(w => ({ wch: w }));
     XLSX.utils.book_append_sheet(wb, ws1, "팀 구성");
     XLSX.utils.book_append_sheet(wb, ws2, "팀 요약");
     if (left.length) {
-      const ws3 = XLSX.utils.aoa_to_sheet([["선수 닉네임", "디스코드 이름", "최고 티어", "현재 티어", "티어 점수", "포지션", "유찰 횟수"]]
-        .concat(left.map(p => [p.name, p.discord || "", p.peak, p.current, Number(playerScore(p).toFixed(1)), p.pos, p.unsold || 0])));
+      const ws3 = XLSX.utils.aoa_to_sheet([["선수 닉네임", "디스코드 이름", "최고 티어", "현재 티어", "티어 점수", "포지션", "주 요원", "유찰 횟수"]]
+        .concat(left.map(p => [p.name, p.discord || "", p.peak, p.current, Number(playerScore(p).toFixed(1)), p.pos, agentsOf(p).join(", "), p.unsold || 0])));
       XLSX.utils.book_append_sheet(wb, ws3, "팀에 못 들어간 선수");
     }
     wb.Props = { Title: title || "경매 결과" };

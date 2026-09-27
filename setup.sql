@@ -137,7 +137,9 @@ alter table public.signups add column if not exists captain    boolean not null 
 alter table public.signups add column if not exists score_override numeric(5,1);                 -- 운영자가 직접 정한 티어 점수 (비우면 자동 계산)
 alter table public.players add column if not exists signup_id bigint;                            -- 신청 명단에서 온 선수면 그 신청 번호
 alter table public.players add column if not exists score_override numeric(5,1);
-alter table public.teams   add column if not exists handicap int not null default 0;             -- 시작 포인트에서 깎는 핸디캡
+alter table public.teams   add column if not exists handicap int not null default 0;
+alter table public.signups add column if not exists agents text[] not null default '{}';          -- 주 요원 (최대 3개, 고른 순서대로)
+alter table public.players add column if not exists agents text[] not null default '{}';             -- 시작 포인트에서 깎는 핸디캡
 alter table public.signups add column if not exists memo       text not null default '';        -- 운영자끼리만 보는 메모
 alter table public.signups add column if not exists updated_at timestamptz;
 alter table public.signups add column if not exists updated_by text not null default '';
@@ -262,7 +264,7 @@ language sql stable security definer set search_path = public as $$
               from teams t where t.auction_id = a.id),
     'players', (select coalesce(jsonb_agg(jsonb_build_object(
                   'id', p.id, 'name', p.name, 'peak', p.peak, 'current', p.current_tier, 'pos', p.pos,
-                  'captain', p.captain, 'motto', p.motto, 'unsold', p.unsold,
+                  'captain', p.captain, 'motto', p.motto, 'unsold', p.unsold, 'agents', to_jsonb(p.agents),
                   'team', p.team_idx, 'price', p.price, 'how', p.how, 'score', p.score_override, 'signup_id', p.signup_id,
                   'discord', (select s.discord_name from signups s where s.id = p.signup_id)) order by p.id), '[]')
                 from players p where p.auction_id = a.id),
@@ -282,7 +284,7 @@ begin
   v_colors := a.config -> 'teamColors';
   delete from players where auction_id = p_id;
   delete from teams where auction_id = p_id;
-  insert into players (auction_id, id, name, peak, current_tier, pos, captain, motto, photo, signup_id, score_override)
+  insert into players (auction_id, id, name, peak, current_tier, pos, captain, motto, photo, signup_id, score_override, agents)
   select p_id, (e.ordinality - 1)::int,
          left(trim(e.value ->> 'name'), 16), e.value ->> 'peak', e.value ->> 'current', e.value ->> 'pos',
          coalesce((e.value ->> 'captain')::boolean, false),
@@ -290,7 +292,8 @@ begin
          case when coalesce(e.value ->> 'photo', '') like 'data:image/%' and length(e.value ->> 'photo') <= 400000
               then e.value ->> 'photo' else '' end,
          (select id from signups where id = (e.value ->> 'signup_id')::bigint and auction_id = p_id),   -- 신청 명단과의 연결 유지
-         case when (e.value ->> 'score') ~ '^[0-9]+(\.[0-9]+)?$' then round(least((e.value ->> 'score')::numeric, 1000), 1) end
+         case when (e.value ->> 'score') ~ '^[0-9]+(\.[0-9]+)?$' then round(least((e.value ->> 'score')::numeric, 1000), 1) end,
+         _clean_agents(e.value -> 'agents')
   from jsonb_array_elements(p_players) with ordinality e;
   for r in select id, name from players where auction_id = p_id and captain order by id loop
     insert into teams (auction_id, idx, name, color, points)
@@ -644,8 +647,8 @@ begin
                where s.auction_id = p_id
                  and (c.x is not null or not (s.id::text in (select jsonb_array_elements_text(coalesce(p_arg -> 'exclude', '[]')))))
                order by c.ord nulls last, s.id loop
-        insert into players (auction_id, id, name, peak, current_tier, pos, captain, motto, photo, signup_id, score_override)
-        values (p_id, i, r.nick, r.peak, r.current_tier, r.pos, r.ord is not null, '', '', r.id, r.score_override);
+        insert into players (auction_id, id, name, peak, current_tier, pos, captain, motto, photo, signup_id, score_override, agents)
+        values (p_id, i, r.nick, r.peak, r.current_tier, r.pos, r.ord is not null, '', '', r.id, r.score_override, r.agents);
         if r.ord is not null then
           v_amt := coalesce((p_arg #>> array['handicaps', r.id::text])::numeric, 0)::int;
           insert into teams (auction_id, idx, name, color, points, handicap)
@@ -774,10 +777,21 @@ $$;
 create or replace function public._valid_pos(t text) returns boolean
 language sql immutable as $$ select t = any (array['타격대','척후대','감시자','전략가']) $$;
 
+-- 주 요원: 이름 목록(jsonb 배열)을 다듬어 최대 3개까지 (빈 값·중복 빼고, 고른 순서 유지)
+create or replace function public._clean_agents(p jsonb) returns text[]
+language sql immutable as $$
+  select coalesce((select array_agg(x order by o) from (
+    select x, min(o) o from (
+      select left(trim(e.value), 20) x, e.ordinality o
+      from jsonb_array_elements_text(case when jsonb_typeof(p) = 'array' then p else '[]'::jsonb end) with ordinality e) t
+    where x <> '' group by x order by min(o) limit 3) u), '{}')
+$$;
+
 create or replace function public._signup_json(s public.signups) returns jsonb
 language sql stable as $$
   select jsonb_build_object('id', s.id, 'discord_name', s.discord_name, 'discord_username', s.discord_username,
     'discord_avatar', s.discord_avatar, 'nick', s.nick, 'peak', s.peak, 'current', s.current_tier, 'pos', s.pos,
+    'agents', to_jsonb(s.agents),
     'at', (extract(epoch from s.created_at) * 1000)::bigint)
 $$;
 
@@ -807,7 +821,8 @@ begin
 end $$;
 
 -- 신청하기: 디스코드 이름은 브라우저가 보낸 값이 아니라 로그인 정보에서 서버가 직접 꺼냄
-create or replace function public.submit_signup(p_code text, p_nick text, p_peak text, p_current text, p_pos text) returns jsonb
+drop function if exists public.submit_signup(text, text, text, text, text);   -- 7단계: 주 요원을 받도록 바뀜
+create or replace function public.submit_signup(p_code text, p_nick text, p_peak text, p_current text, p_pos text, p_agents jsonb default '[]') returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   v_uid uuid := auth.uid(); v_auction uuid; v_meta jsonb; v_nick text := left(trim(coalesce(p_nick, '')), 16);
@@ -832,16 +847,17 @@ begin
   v_user := regexp_replace(coalesce(v_meta ->> 'full_name', v_meta ->> 'name', ''), '#0$', '');
   v_name := coalesce(nullif(v_meta #>> '{custom_claims,global_name}', ''), nullif(v_user, ''), '이름 없음');
 
-  insert into signups (auction_id, user_id, discord_id, discord_name, discord_username, discord_avatar, nick, peak, current_tier, pos)
+  insert into signups (auction_id, user_id, discord_id, discord_name, discord_username, discord_avatar, nick, peak, current_tier, pos, agents)
   values (v_auction, v_uid, coalesce(v_meta ->> 'provider_id', v_meta ->> 'sub', ''), left(v_name, 40), left(v_user, 40),
-          left(coalesce(v_meta ->> 'avatar_url', ''), 300), v_nick, p_peak, p_current, p_pos)
+          left(coalesce(v_meta ->> 'avatar_url', ''), 300), v_nick, p_peak, p_current, p_pos, _clean_agents(p_agents))
   on conflict (auction_id, user_id) do nothing
   returning * into s;
   if s.id is null then       -- 거의 동시에 두 번 눌렀을 때
     select * into s from signups where auction_id = v_auction and user_id = v_uid;
     return jsonb_build_object('ok', false, 'reason', '이미 이 디스코드 계정으로 신청했어요.', 'signup', _signup_json(s));
   end if;
-  perform _slog(v_auction, '신청 접수', format('%s (%s) · %s / %s · %s', s.nick, s.discord_name, s.peak, s.current_tier, s.pos));
+  perform _slog(v_auction, '신청 접수', format('%s (%s) · %s / %s · %s%s', s.nick, s.discord_name, s.peak, s.current_tier, s.pos,
+    case when cardinality(s.agents) > 0 then ' · ' || array_to_string(s.agents, ', ') else '' end));
   return jsonb_build_object('ok', true, 'signup', _signup_json(s));
 end $$;
 
@@ -854,12 +870,12 @@ begin
           from signups s where s.auction_id = p_id);
 end $$;
 
-revoke execute on function public._valid_tier(text), public._valid_pos(text), public._signup_json(public.signups)
+revoke execute on function public._valid_tier(text), public._valid_pos(text), public._clean_agents(jsonb), public._signup_json(public.signups)
   from public, anon, authenticated;
 revoke execute on function public.signup_info(text), public.my_signup(text),
-  public.submit_signup(text, text, text, text, text), public.get_signups(uuid, text) from public;
+  public.submit_signup(text, text, text, text, text, jsonb), public.get_signups(uuid, text) from public;
 grant execute on function public.signup_info(text), public.my_signup(text),
-  public.submit_signup(text, text, text, text, text), public.get_signups(uuid, text) to anon, authenticated;
+  public.submit_signup(text, text, text, text, text, jsonb), public.get_signups(uuid, text) to anon, authenticated;
 
 -- =====================================================================
 -- 운영자 콘솔 (admin.html) — 디스코드로 로그인한 진행자·운영자만
@@ -1075,7 +1091,7 @@ begin
       'locked', _locked(a), 'unlocked', a.unlocked),
     'signups', (select coalesce(jsonb_agg(jsonb_build_object('id', s.id, 'user_id', s.user_id,
         'discord_name', s.discord_name, 'discord_username', s.discord_username, 'discord_avatar', s.discord_avatar,
-        'nick', s.nick, 'peak', s.peak, 'current', s.current_tier, 'pos', s.pos, 'captain', s.captain, 'memo', s.memo, 'score', s.score_override,
+        'nick', s.nick, 'peak', s.peak, 'current', s.current_tier, 'pos', s.pos, 'agents', to_jsonb(s.agents), 'captain', s.captain, 'memo', s.memo, 'score', s.score_override,
         'at', _ms(s.created_at), 'updated_by', s.updated_by, 'updated_at', _ms(s.updated_at),
         'checks', (select coalesce(jsonb_agg(jsonb_build_object('kind', c.kind, 'user_id', c.user_id, 'name', c.staff_name) order by c.at), '[]')
                    from signup_checks c where c.signup_id = s.id)) order by s.id), '[]')
@@ -1121,6 +1137,8 @@ begin
     case when v_peak <> s.peak then format('최고 티어 %s → %s', s.peak, v_peak) end,
     case when v_cur <> s.current_tier then format('현재 티어 %s → %s', s.current_tier, v_cur) end,
     case when p_patch ? 'pos' and p_patch ->> 'pos' <> s.pos then format('포지션 %s → %s', s.pos, p_patch ->> 'pos') end,
+    case when p_patch ? 'agents' and _clean_agents(p_patch -> 'agents') <> s.agents
+         then format('주 요원 %s → %s', coalesce(nullif(array_to_string(s.agents, ', '), ''), '없음'), coalesce(nullif(array_to_string(_clean_agents(p_patch -> 'agents'), ', '), ''), '없음')) end,
     case when p_patch ? 'memo' and left(coalesce(p_patch ->> 'memo', ''), 200) <> s.memo then format('메모 "%s" → "%s"', s.memo, left(coalesce(p_patch ->> 'memo', ''), 200)) end,
     case when v_score is distinct from s.score_override then format('직접 정한 점수 %s → %s', coalesce(s.score_override::text, '자동'), coalesce(v_score::text, '자동')) end,
     case when (p_patch ->> 'captain') is not null and (p_patch ->> 'captain')::boolean <> s.captain
@@ -1132,6 +1150,7 @@ begin
     nick         = case when p_patch ? 'nick' then left(trim(p_patch ->> 'nick'), 16) else nick end,
     peak         = v_peak, current_tier = v_cur,
     pos          = coalesce(p_patch ->> 'pos', pos),
+    agents       = case when p_patch ? 'agents' then _clean_agents(p_patch -> 'agents') else agents end,
     memo         = case when p_patch ? 'memo' then left(coalesce(p_patch ->> 'memo', ''), 200) else memo end,
     captain      = coalesce((p_patch ->> 'captain')::boolean, captain),
     score_override = v_score,
@@ -1139,7 +1158,8 @@ begin
   where id = s.id;
   -- 이미 경매에 올라간 선수면 경매 화면에도 같이 반영 (닉네임·티어·포지션·점수)
   update players set name = case when p_patch ? 'nick' then v_nick else name end,
-         peak = v_peak, current_tier = v_cur, pos = coalesce(p_patch ->> 'pos', pos), score_override = v_score
+         peak = v_peak, current_tier = v_cur, pos = coalesce(p_patch ->> 'pos', pos), score_override = v_score,
+         agents = case when p_patch ? 'agents' then _clean_agents(p_patch -> 'agents') else agents end
    where signup_id = s.id and auction_id = s.auction_id;
   if found then perform _bump(s.auction_id); end if;
   return jsonb_build_object('ok', true);

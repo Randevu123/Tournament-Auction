@@ -377,3 +377,17 @@
 .result-grid.reveal .result-team.top.shown { transform: scale(1.03); }
 .result-grid .result-team.crowned { animation: crown 1.6s ease-in-out infinite; }
 @keyframes crown { 0%, 100% { box-shadow: 0 0 0 1px var(--gold), 0 0 26px rgba(255,209,102,.35); } 50% { box-shadow: 0 0 0 2px var(--gold), 0 0 60px rgba(255,209,102,.7); } }
+
+/* 7단계: 주 요원 칩 */
+.agents { display: inline-flex; flex-wrap: wrap; gap: 4px; vertical-align: middle; }
+.agents .ag { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: rgba(255,209,102,.12); border: 1px solid rgba(255,209,102,.4); color: var(--gold); white-space: nowrap; }
+.agent-pick { display: grid; gap: 8px; }
+.agent-pick .role { display: grid; gap: 4px; }
+.agent-pick .role small { font-size: 11px; color: var(--muted); font-weight: 700; }
+.agent-pick .role div { display: flex; flex-wrap: wrap; gap: 5px; }
+.agent-pick button { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 7px 11px; font-size: 14px; font-weight: 700; }
+.agent-pick button.on { background: rgba(255,209,102,.16); border-color: var(--gold); color: var(--gold); }
+.agent-pick button .no { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: var(--gold); color: #1a1400; font-size: 11px; margin-right: 4px; }
+.agents.sm { display: flex; margin-top: 4px; }
+.p-agents { margin-top: 8px; min-height: 0; }
+.agents.lg .ag { font-size: 15px; padding: 3px 11px; }
