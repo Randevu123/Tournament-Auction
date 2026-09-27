@@ -272,7 +272,7 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresen
 
   refresh(); refreshChat();
   return {
-    act, sendChat, refresh,
+    sb, act, sendChat, refresh,
     rpc: (fn, args = {}) => rpc(fn, { p_id: id, p_key: key, ...args }),
     serverNow: () => Date.now() + offset,
     get state() { return state; },

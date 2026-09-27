@@ -285,3 +285,21 @@
 .link-row input { min-width: 0; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 7px 8px; font-size: 12px; }
 .links .warn { color: var(--warn); font-size: 13px; }
 @media (max-width: 700px) { .link-row { grid-template-columns: 1fr auto; } .link-row input { grid-column: 1 / -1; grid-row: 2; } }
+
+/* =====================================================================
+   3단계: 참가 신청 명단
+   ===================================================================== */
+#btnSignups b { display: inline-block; min-width: 22px; margin-left: 4px; padding: 0 6px; border-radius: 999px; background: #5865f2; color: #fff; font-size: 12px; }
+#btnSignups.pulse { animation: tpulse .6s ease; --c: #5865f2; }
+.signup-table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.signup-table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 720px; }
+.signup-table th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 700; padding: 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.signup-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.signup-table tr:last-child td { border-bottom: 0; }
+.signup-table .dc { display: flex; align-items: center; gap: 8px; }
+.signup-table .dc img { width: 26px; height: 26px; border-radius: 50%; }
+.signup-table .dc small { display: block; color: var(--muted); font-size: 11px; }
+.signup-table .sc { font-family: var(--num); color: var(--gold); font-size: 17px; }
+.signup-table .tm { color: var(--muted); font-size: 12px; }
+.signup-table tr.fresh td { animation: freshrow 2.4s ease; }
+@keyframes freshrow { 0% { background: rgba(88,101,242,.45); } 100% { background: transparent; } }

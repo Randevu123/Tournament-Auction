@@ -77,6 +77,29 @@ create table if not exists public.chat (
   created_at timestamptz not null default now()
 );
 
+-- 3단계: 참가 신청 (디스코드 로그인)
+-- 신청 링크에는 경매 번호 대신 신청 전용 코드를 씀 (신청 링크는 공개되므로 경매 번호를 숨김)
+alter table public.auctions add column if not exists signup_code text not null default replace(gen_random_uuid()::text, '-', '');
+create unique index if not exists auctions_signup_code_idx on public.auctions (signup_code);
+
+create table if not exists public.signups (
+  id               bigserial primary key,
+  auction_id       uuid not null references public.auctions on delete cascade,
+  user_id          uuid not null,          -- Supabase 로그인 계정 (디스코드 계정 1개 = 1개)
+  discord_id       text not null default '',
+  discord_name     text not null default '',
+  discord_username text not null default '',
+  discord_avatar   text not null default '',
+  nick             text not null,
+  peak             text not null,
+  current_tier     text not null,
+  pos              text not null,
+  created_at       timestamptz not null default now(),
+  unique (auction_id, user_id)            -- 같은 계정은 한 경매에 한 번만
+);
+alter table public.signups enable row level security;
+revoke all on public.signups from anon, authenticated;
+
 create index if not exists events_auction_idx on public.events (auction_id, id desc);
 create index if not exists chat_auction_idx on public.chat (auction_id, id);
 
@@ -291,7 +314,9 @@ create or replace function public.get_links(p_id uuid, p_key text) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 begin
   if (select role from _auth(p_id, p_key)) is distinct from 'host' then return null; end if;
-  return (select jsonb_agg(key order by team_idx) from auction_keys where auction_id = p_id and role = 'team');
+  return jsonb_build_object(
+    'teams', (select jsonb_agg(key order by team_idx) from auction_keys where auction_id = p_id and role = 'team'),
+    'signup_code', (select signup_code from auctions where id = p_id));
 end $$;
 
 create or replace function public.get_state(p_id uuid, p_key text) returns jsonb
@@ -499,3 +524,97 @@ grant execute on function public.create_auction(jsonb, jsonb), public.whoami(uui
   public.send_chat(uuid, text, text), public.place_bid(uuid, text, int), public.tick(uuid, text),
   public.host_action(uuid, text, text, jsonb)
   to anon, authenticated;
+
+-- =====================================================================
+-- 3단계: 디스코드 로그인 참가 신청
+-- =====================================================================
+
+-- 티어와 포지션 목록 (화면의 점수표와 같은 이름)
+create or replace function public._valid_tier(t text) returns boolean
+language sql immutable as $$
+  select t = any (array[
+    '아이언 1','아이언 2','아이언 3','브론즈 1','브론즈 2','브론즈 3','실버 1','실버 2','실버 3',
+    '골드 1','골드 2','골드 3','플래티넘 1','플래티넘 2','플래티넘 3','다이아몬드 1','다이아몬드 2','다이아몬드 3',
+    '초월자 1','초월자 2','초월자 3','불멸 1','불멸 2','불멸 3','레디언트'])
+$$;
+create or replace function public._valid_pos(t text) returns boolean
+language sql immutable as $$ select t = any (array['타격대','척후대','감시자','전략가']) $$;
+
+create or replace function public._signup_json(s public.signups) returns jsonb
+language sql stable as $$
+  select jsonb_build_object('id', s.id, 'discord_name', s.discord_name, 'discord_username', s.discord_username,
+    'discord_avatar', s.discord_avatar, 'nick', s.nick, 'peak', s.peak, 'current', s.current_tier, 'pos', s.pos,
+    'at', (extract(epoch from s.created_at) * 1000)::bigint)
+$$;
+
+-- 신청 링크가 살아 있는지 (로그인 전에도 확인 가능)
+create or replace function public.signup_info(p_code text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare v_auction uuid;
+begin
+  select id into v_auction from auctions where signup_code = p_code;
+  if v_auction is null then return null; end if;
+  return jsonb_build_object('ok', true, 'count', (select count(*) from signups where auction_id = v_auction));
+end $$;
+
+-- 로그인한 사람이 이미 신청했는지
+create or replace function public.my_signup(p_code text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare v_auction uuid; s signups;
+begin
+  if auth.uid() is null then return null; end if;
+  select id into v_auction from auctions where signup_code = p_code;
+  select * into s from signups where auction_id = v_auction and user_id = auth.uid();
+  if s.id is null then return null; end if;
+  return _signup_json(s);
+end $$;
+
+-- 신청하기: 디스코드 이름은 브라우저가 보낸 값이 아니라 로그인 정보에서 서버가 직접 꺼냄
+create or replace function public.submit_signup(p_code text, p_nick text, p_peak text, p_current text, p_pos text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_uid uuid := auth.uid(); v_auction uuid; v_meta jsonb; v_nick text := left(trim(coalesce(p_nick, '')), 16);
+  v_name text; v_user text; s signups;
+begin
+  if v_uid is null then return jsonb_build_object('ok', false, 'reason', '디스코드로 로그인해야 신청할 수 있어요.'); end if;
+  select id into v_auction from auctions where signup_code = p_code;
+  if v_auction is null then return jsonb_build_object('ok', false, 'reason', '신청 링크가 올바르지 않아요.'); end if;
+  select * into s from signups where auction_id = v_auction and user_id = v_uid;
+  if s.id is not null then
+    return jsonb_build_object('ok', false, 'reason', '이미 이 디스코드 계정으로 신청했어요.', 'signup', _signup_json(s));
+  end if;
+  if v_nick = '' then return jsonb_build_object('ok', false, 'reason', '게임 닉네임을 적어 주세요.'); end if;
+  if not coalesce(_valid_tier(p_peak), false) then return jsonb_build_object('ok', false, 'reason', '최고 티어를 골라 주세요.'); end if;
+  if not coalesce(_valid_tier(p_current), false) then return jsonb_build_object('ok', false, 'reason', '현재 티어를 골라 주세요.'); end if;
+  if not coalesce(_valid_pos(p_pos), false) then return jsonb_build_object('ok', false, 'reason', '포지션을 골라 주세요.'); end if;
+
+  select coalesce(raw_user_meta_data, '{}') into v_meta from auth.users where id = v_uid;
+  v_user := regexp_replace(coalesce(v_meta ->> 'full_name', v_meta ->> 'name', ''), '#0$', '');
+  v_name := coalesce(nullif(v_meta #>> '{custom_claims,global_name}', ''), nullif(v_user, ''), '이름 없음');
+
+  insert into signups (auction_id, user_id, discord_id, discord_name, discord_username, discord_avatar, nick, peak, current_tier, pos)
+  values (v_auction, v_uid, coalesce(v_meta ->> 'provider_id', v_meta ->> 'sub', ''), left(v_name, 40), left(v_user, 40),
+          left(coalesce(v_meta ->> 'avatar_url', ''), 300), v_nick, p_peak, p_current, p_pos)
+  on conflict (auction_id, user_id) do nothing
+  returning * into s;
+  if s.id is null then       -- 거의 동시에 두 번 눌렀을 때
+    select * into s from signups where auction_id = v_auction and user_id = v_uid;
+    return jsonb_build_object('ok', false, 'reason', '이미 이 디스코드 계정으로 신청했어요.', 'signup', _signup_json(s));
+  end if;
+  return jsonb_build_object('ok', true, 'signup', _signup_json(s));
+end $$;
+
+-- 진행자 화면의 신청 명단
+create or replace function public.get_signups(p_id uuid, p_key text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if (select role from _auth(p_id, p_key)) is distinct from 'host' then return null; end if;
+  return (select coalesce(jsonb_agg(_signup_json(s) order by s.id), '[]') from signups s where s.auction_id = p_id);
+end $$;
+
+revoke execute on function public._valid_tier(text), public._valid_pos(text), public._signup_json(public.signups)
+  from public, anon, authenticated;
+revoke execute on function public.signup_info(text), public.my_signup(text),
+  public.submit_signup(text, text, text, text, text), public.get_signups(uuid, text) from public;
+grant execute on function public.signup_info(text), public.my_signup(text),
+  public.submit_signup(text, text, text, text, text), public.get_signups(uuid, text) to anon, authenticated;

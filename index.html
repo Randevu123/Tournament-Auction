@@ -34,6 +34,7 @@
   <div class="spacer"></div>
   <div class="ctrl">
     <span class="state-line" id="progress"></span>
+    <button class="btn" id="btnSignups">신청 명단 <b id="signupCount">0</b></button>
     <button class="btn" id="btnLinks">팀장 링크</button>
     <button class="btn" id="btnEdit">선수 관리</button>
     <button class="btn primary" id="btnStart">경매 시작 (Space)</button>
@@ -56,6 +57,7 @@
       <h2>팀장 5명 · 선수 20명</h2>
       <p>‘선수 관리’에서 정보를 확인하고, ‘팀장 링크’를 팀장들에게 보낸 뒤 경매 순서를 뽑으세요.</p>
       <div class="row">
+        <button class="btn big" id="btnSignups2">신청 명단</button>
         <button class="btn big" id="btnLinks2">팀장 링크</button>
         <button class="btn big" id="btnEdit2">선수 관리</button>
         <button class="btn primary big" id="btnDraw">경매 순서 뽑기</button>
@@ -113,6 +115,22 @@
     <div id="linkRows"></div>
     <p class="warn">진행자 링크는 이 경매를 조작하는 열쇠입니다. 즐겨찾기에 저장하고 다른 사람에게 보내지 마세요.</p>
     <div class="draw-ctrl"><button class="btn primary" id="btnLinksClose">닫기</button></div>
+  </div>
+</div>
+
+<!-- 참가 신청 명단 -->
+<div class="overlay" id="signupOverlay">
+  <div class="links">
+    <h2>참가 신청 명단 <span id="signupCount2" style="color:var(--gold)">0</span>명</h2>
+    <p>아래 신청 링크를 디스코드 서버에 올리면, 참가자가 디스코드로 로그인해서 신청합니다. 새 신청은 이 명단에 바로 올라옵니다.</p>
+    <div class="link-row" style="--c:#5865f2"><b>참가 신청 링크</b><input readonly id="signupLink"><button class="btn" data-copy>복사</button></div>
+    <div class="signup-table-wrap">
+      <table class="signup-table">
+        <thead><tr><th>#</th><th>디스코드</th><th>게임 닉네임</th><th>최고 티어</th><th>현재 티어</th><th>포지션</th><th>점수</th><th>신청 시각</th></tr></thead>
+        <tbody id="signupRows"></tbody>
+      </table>
+    </div>
+    <div class="draw-ctrl"><button class="btn primary" id="btnSignupsClose">닫기</button></div>
   </div>
 </div>
 
@@ -204,6 +222,7 @@ async function boot() {
     onPresence: st => { online = new Set(Object.keys(st)); if (S) render(); },
   });
   chat = mountChat($("chat"), net, { storeKey: "valo-chat-host" });
+  startSignups();
   if (new URLSearchParams(location.search).get("new") === "1") {
     history.replaceState(null, "", pageUrl("index.html", id, key));
     openLinks();
@@ -286,27 +305,84 @@ document.addEventListener("keydown", e => {
 /* ---------- 팀장 링크 ---------- */
 async function openLinks() {
   const { id, key } = linkParams();
-  let keys;
-  try { keys = await net.rpc("get_links"); } catch (e) { return toast("링크를 불러오지 못했어요."); }
+  let links;
+  try { links = await net.rpc("get_links"); } catch (e) { return toast("링크를 불러오지 못했어요."); }
   const rows = [`<div class="link-row"><b>진행자 (나)</b><input readonly value="${esc(pageUrl("index.html", id, key))}"><button class="btn" data-copy>복사</button></div>`];
-  (keys || []).forEach((k, i) => {
+  if (links && links.signup_code) rows.push(`<div class="link-row" style="--c:#5865f2"><b>참가 신청 (공개용)</b><input readonly value="${esc(signupUrl(links.signup_code))}"><button class="btn" data-copy>복사</button></div>`);
+  ((links && links.teams) || []).forEach((k, i) => {
     const t = S && S.teams[i];
     rows.push(`<div class="link-row" style="--c:${esc(t ? t.color : "")}"><b>${esc(t ? t.name : `${i + 1}팀`)}</b><input readonly value="${esc(pageUrl("team.html", id, k))}"><button class="btn" data-copy>복사</button></div>`);
   });
   $("linkRows").innerHTML = rows.join("");
   $("linksOverlay").classList.add("show");
 }
-$("linkRows").addEventListener("click", async e => {
+async function copyRow(e) {
   if (!e.target.matches("[data-copy]")) return;
   const input = e.target.parentElement.querySelector("input");
   try { await navigator.clipboard.writeText(input.value); }
   catch (err) { input.select(); document.execCommand("copy"); }
   e.target.textContent = "복사됨";
   setTimeout(() => (e.target.textContent = "복사"), 1500);
-});
+}
+$("linkRows").addEventListener("click", copyRow);
+$("signupOverlay").addEventListener("click", copyRow);
 $("btnLinks").addEventListener("click", openLinks);
 $("btnLinks2").addEventListener("click", openLinks);
 $("btnLinksClose").addEventListener("click", () => $("linksOverlay").classList.remove("show"));
+
+/* ---------- 참가 신청 명단 (디스코드 로그인 신청) ---------- */
+let signups = [], signupCode = null, signupsLoaded = false;
+function signupUrl(code) {
+  const u = new URL("signup.html", location.href);
+  u.search = new URLSearchParams({ s: code }).toString(); u.hash = "";
+  return u.toString();
+}
+async function startSignups() {
+  try {
+    const links = await net.rpc("get_links");
+    signupCode = links && links.signup_code;
+  } catch (e) { /* 다음 확인 때 */ }
+  if (signupCode) {
+    $("signupLink").value = signupUrl(signupCode);
+    // 신청 화면이 보내는 "새 신청" 신호를 받으면 바로 명단을 다시 불러옴
+    net.sb.channel(`signup-${signupCode}`, { config: { broadcast: { self: false } } })
+      .on("broadcast", { event: "new" }, () => loadSignups())
+      .subscribe(status => { if (status === "SUBSCRIBED") loadSignups(); });
+  }
+  loadSignups();
+  setInterval(loadSignups, 5000);     // 신호를 놓쳐도 5초 안에 따라잡음
+}
+async function loadSignups() {
+  let list;
+  try { list = await net.rpc("get_signups"); } catch (e) { return; }
+  if (!Array.isArray(list)) return;
+  const known = new Set(signups.map(x => x.id));
+  const fresh = list.filter(x => !known.has(x.id));
+  signups = list;
+  if (signupsLoaded && fresh.length) {
+    const f = fresh[fresh.length - 1];
+    toast(`새 신청: ${f.nick} (${f.discord_name})`);
+    bumpEl($("btnSignups"), "pulse");
+  }
+  signupsLoaded = true;
+  renderSignups(new Set(fresh.map(x => x.id)));
+}
+function renderSignups(freshIds = new Set()) {
+  $("signupCount").textContent = signups.length;
+  $("signupCount2").textContent = signups.length;
+  $("signupRows").innerHTML = signups.length ? signups.map((x, i) => `
+    <tr class="${freshIds.has(x.id) ? "fresh" : ""}">
+      <td>${i + 1}</td>
+      <td><span class="dc">${x.discord_avatar ? `<img src="${esc(x.discord_avatar)}" alt="">` : avatar({ name: x.discord_name }, 26)}<span><b>${esc(x.discord_name)}</b>${x.discord_username ? `<small>@${esc(x.discord_username)}</small>` : ""}</span></span></td>
+      <td><b>${esc(x.nick)}</b></td><td>${esc(x.peak)}</td><td>${esc(x.current)}</td><td>${esc(x.pos)}</td>
+      <td class="sc">${playerScore(x).toFixed(1)}</td>
+      <td class="tm">${new Date(x.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+    </tr>`).join("") : `<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:24px">아직 신청이 없어요. 신청 링크를 디스코드 서버에 올려 주세요.</td></tr>`;
+}
+function openSignups() { $("signupOverlay").classList.add("show"); loadSignups(); }
+$("btnSignups").addEventListener("click", openSignups);
+$("btnSignups2").addEventListener("click", openSignups);
+$("btnSignupsClose").addEventListener("click", () => $("signupOverlay").classList.remove("show"));
 
 /* ---------- 경매 순서 뽑기 (진행자 화면에서 추첨 연출 → 결과를 서버에 저장) ---------- */
 let drawOrder = [], drawIndex = 0, drawTimer = null;
