@@ -26,6 +26,11 @@
   aside { display: grid; gap: 10px; position: sticky; top: 12px; }
   .ev-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-height: calc(100vh - 220px); overflow: auto; }
   .ev-list li { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; display: grid; gap: 4px; }
+  .ev-list li.past { opacity: .72; }
+  .ev-list li.past.on { opacity: 1; }
+  .ev-list .past-head { cursor: pointer; display: flex; align-items: center; gap: 8px; background: none; border: 1px dashed var(--line); color: var(--muted); font-size: 13px; font-weight: 700; padding: 8px 12px; margin-top: 6px; }
+  .ev-list .past-head b { color: var(--text); }
+  .ev-list .past-head span { margin-left: auto; font-size: 12px; }
   .ev-list li.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 20px rgba(255,70,85,.2); }
   .ev-list .t { font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ev-list .m { font-size: 12px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; }
@@ -302,7 +307,7 @@ async function refresh() {
   const [ev, mem] = await Promise.all([call("list_events"), call("staff_members")]);
   if (ev === null) return route();            // 권한이 사라졌으면 처음 화면으로
   events = ev; members = mem || []; window.members = members;
-  if (!selected || !events.some(e => e.id === selected)) selected = events[0] ? events[0].id : null;
+  if (!selected || !events.some(e => e.id === selected)) { const first = events.find(e => !isPast(e)) || events[0]; selected = first ? first.id : null; }
   detail = selected ? await call("event_detail", { p_id: selected }) : null;
   if (detail) auctionChannel(detail.event.id);
   // 기록을 못 불러오면 이전 목록을 그대로 둠 (빈 목록으로 덮지 않음)
@@ -329,17 +334,39 @@ function selectEvent(id) {
 }
 
 function render() {
-  $("evList").innerHTML = events.length ? events.map(e => `
-    <li class="${e.id === selected && view === "event" ? "on" : ""}" data-ev="${e.id}">
+  // 진행 중·예정 회차와 지난 회차(경매가 끝났거나 경기 일시가 지난 회차)를 나눠 보여 줌
+  const active = events.filter(e => !isPast(e));
+  const past = events.filter(isPast).sort((a, b) => pastSort(b) - pastSort(a));
+  if (past.some(e => e.id === selected)) pastOpen = true;
+  const evItem = e => {
+    const done = isPast(e);
+    return `<li class="${e.id === selected && view === "event" ? "on" : ""} ${done ? "past" : ""}" data-ev="${e.id}">
       <div class="t">${esc(e.title || "이름 없는 회차")}</div>
-      <div class="m"><span class="chip ${e.open ? "open" : "closed"}">${e.open ? "신청 받는 중" : "신청 닫힘"}</span><span>경매 ${fmt(e.auction_at)}</span></div>
-      <div class="m"><span>신청 ${e.signups}명</span><span>팀장 ${e.captains}명</span>${e.tasks_open ? `<span>할 일 ${e.tasks_open}</span>` : ""}</div>
-    </li>`).join("") : `<li style="cursor:default;color:var(--muted)">아직 회차가 없어요. ‘새 회차 만들기’를 눌러 주세요.</li>`;
+      <div class="m">${done ? `<span class="chip">${e.status_label === "done" ? "경매 끝" : "경기 지남"}</span><span>경기 ${fmt(e.match_at || e.auction_at)}</span>`
+        : `<span class="chip ${e.open ? "open" : "closed"}">${e.open ? "신청 받는 중" : "신청 닫힘"}</span><span>경매 ${fmt(e.auction_at)}</span>`}</div>
+      <div class="m"><span>신청 ${e.signups}명</span><span>팀장 ${e.captains}명</span>${e.host_name ? `<span>진행 ${esc(e.host_name)}</span>` : ""}${!done && e.tasks_open ? `<span>할 일 ${e.tasks_open}</span>` : ""}</div>
+    </li>`;
+  };
+  $("evList").innerHTML = (active.length ? active.map(evItem).join("")
+      : `<li style="cursor:default;color:var(--muted)">${events.length ? "진행 중이거나 예정된 회차가 없어요." : "아직 회차가 없어요. ‘새 회차 만들기’를 눌러 주세요."}</li>`)
+    + (past.length ? `<li class="past-head" data-past-toggle>지난 회차 <b>${past.length}</b><span>${pastOpen ? "접기 ▲" : "펼치기 ▼"}</span></li>${pastOpen ? past.map(evItem).join("") : ""}` : "");
   if (view === "staff") return renderStaff();
   if (!detail) { $("view").innerHTML = `<div class="empty-view">왼쪽에서 회차를 고르거나 새로 만들어 주세요.</div>`; return; }
   renderEvent();
 }
-$("evList").addEventListener("click", e => { const li = e.target.closest("[data-ev]"); if (li) selectEvent(li.dataset.ev); });
+$("evList").addEventListener("click", e => {
+  if (e.target.closest("[data-past-toggle]")) {
+    pastOpen = !pastOpen;
+    try { localStorage.setItem("valo-console-past-open", pastOpen ? "1" : "0"); } catch (err) { /* 무시 */ }
+    return render();
+  }
+  const li = e.target.closest("[data-ev]"); if (li) selectEvent(li.dataset.ev);
+});
+// 지난 회차: 경매가 끝났거나(done) 경기 일시가 지난 회차
+function isPast(e) { return e.status_label === "done" || (!!e.match_at && e.match_at < Date.now()); }
+function pastSort(e) { return e.match_at || e.auction_at || e.created_at || 0; }
+let pastOpen = false;
+try { pastOpen = localStorage.getItem("valo-console-past-open") === "1"; } catch (err) { /* 무시 */ }
 
 function checksOf(s, kind) { return s.checks.filter(c => c.kind === kind); }
 function isDone(s, kind) { return checksOf(s, kind).length >= NEED_CHECKS; }
@@ -353,6 +380,7 @@ function renderEvent() {
   $("view").innerHTML = `
     <div class="ev-head">
       <h2>${esc(e.title || "이름 없는 회차")}</h2>
+      ${isPast({ status_label: e.status, match_at: e.match_at }) ? `<span class="chip">지난 회차</span>` : ""}
       <span class="chip ${e.open ? "open" : "closed"}">${e.open ? "신청 받는 중" : "신청 닫힘"}</span>
       <span style="color:var(--muted);font-size:13px">경매 ${fmt(e.auction_at)} · 경기 ${fmt(e.match_at)}</span>
       <span class="host-chip">진행자 <b>${esc(detail.host.name || "없음")}</b>${detail.host.user_id === me.user_id ? " (나)" : ""}</span>
