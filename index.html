@@ -310,6 +310,7 @@ async function openLinks() {
   const { id, key } = linkParams();
   let links;
   try { links = await net.rpc("get_links"); } catch (e) { return toast("링크를 불러오지 못했어요."); }
+  if (Array.isArray(links)) links = { teams: links };     // 예전 setup.sql(팀장 링크 목록만 돌려줌)과도 맞게
   const rows = [`<div class="link-row"><b>진행자 (나)</b><input readonly value="${esc(pageUrl("index.html", id, key))}"><button class="btn" data-copy>복사</button></div>`];
   if (links && links.signup_code) rows.push(`<div class="link-row" style="--c:#5865f2"><b>참가 신청 (공개용)</b><input readonly value="${esc(signupUrl(links.signup_code))}"><button class="btn" data-copy>복사</button></div>`);
   ((links && links.teams) || []).forEach((k, i) => {
@@ -343,7 +344,7 @@ function signupUrl(code) {
 async function startSignups() {
   try {
     const links = await net.rpc("get_links");
-    signupCode = links && links.signup_code;
+    signupCode = links && !Array.isArray(links) ? links.signup_code : null;
   } catch (e) { /* 다음 확인 때 */ }
   if (signupCode) {
     $("signupLink").value = signupUrl(signupCode);
