@@ -2,6 +2,6 @@
 // supabaseKey 칸에는 "anon" 또는 "publishable" 키를 넣습니다. (공개돼도 되는 키)
 // "service_role" 이나 "secret" 키는 절대 넣지 마세요.
 window.AUCTION_CONFIG = {
-  supabaseUrl: "",
-  supabaseKey: "",
+  supabaseUrl: "https://umfusewgrukutppexbyz.supabase.co",
+  supabaseKey: "sb_publishable_3B9oOuL0lN_XNIkNAl6Buw_3QZU3rZ0",
 };
