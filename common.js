@@ -37,7 +37,7 @@ const TIER_SCORE = {};
 })();
 CONFIG.tierScores = { ...TIER_SCORE };   // 새 회차의 기본 점수표 (진행자 화면 '경매 설정'에서 회차마다 바꿀 수 있음)
 
-// 지금 보고 있는 경매의 점수표·비율 (진행자·팀장·운영진 화면이 서버에서 받아 넣음)
+// 지금 보고 있는 경매의 점수표·비율 (진행자·팀장·운영자 화면이 서버에서 받아 넣음)
 let SCORE_CFG = null;
 function setScoreConfig(cfg) { SCORE_CFG = cfg || null; }
 function tierPoints(tier, cfg = SCORE_CFG) {

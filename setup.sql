@@ -100,10 +100,10 @@ create table if not exists public.signups (
 alter table public.signups enable row level security;
 revoke all on public.signups from anon, authenticated;
 
--- 운영진 콘솔: 운영진 명단, 회차 일정, 신청 마감, 검수, 할 일
+-- 운영자 콘솔: 운영자 명단, 회차 일정, 신청 마감, 검수, 할 일
 create table if not exists public.staff (
   user_id          uuid primary key,        -- 디스코드로 로그인한 계정
-  role             text not null check (role in ('owner', 'staff', 'pending')),   -- 진행자 / 운영진 / 승인 대기
+  role             text not null check (role in ('owner', 'staff', 'pending')),   -- 진행자 / 운영자 / 승인 대기
   discord_name     text not null default '',
   discord_username text not null default '',
   discord_avatar   text not null default '',
@@ -114,7 +114,7 @@ create unique index if not exists staff_one_owner on public.staff (role) where r
 
 create table if not exists public.site_settings (
   id          int primary key default 1 check (id = 1),
-  invite_code text not null default replace(gen_random_uuid()::text, '-', '')   -- 운영진 초대 링크 코드
+  invite_code text not null default replace(gen_random_uuid()::text, '-', '')   -- 운영자 초대 링크 코드
 );
 insert into public.site_settings (id) values (1) on conflict do nothing;
 
@@ -124,17 +124,18 @@ alter table public.auctions add column if not exists signup_closes_at timestampt
 alter table public.auctions add column if not exists signup_mode      text not null default 'auto';  -- auto(일정대로) / open / closed
 alter table public.auctions add column if not exists auction_at       timestamptz;
 alter table public.auctions add column if not exists match_at         timestamptz;
+alter table public.auctions add column if not exists host_user        uuid;          -- 이 회차의 진행자 (운영자 중 한 명, 넘길 수 있음)
 
 alter table public.signups add column if not exists captain    boolean not null default false;  -- 팀장 배정
 alter table public.signups add column if not exists score_override numeric(5,1);                 -- 운영자가 직접 정한 티어 점수 (비우면 자동 계산)
 alter table public.players add column if not exists signup_id bigint;                            -- 신청 명단에서 온 선수면 그 신청 번호
 alter table public.players add column if not exists score_override numeric(5,1);
 alter table public.teams   add column if not exists handicap int not null default 0;             -- 시작 포인트에서 깎는 핸디캡
-alter table public.signups add column if not exists memo       text not null default '';        -- 운영진끼리만 보는 메모
+alter table public.signups add column if not exists memo       text not null default '';        -- 운영자끼리만 보는 메모
 alter table public.signups add column if not exists updated_at timestamptz;
 alter table public.signups add column if not exists updated_by text not null default '';
 
-create table if not exists public.signup_checks (          -- 교차검수: 서로 다른 운영진 2명이 확인하면 확정
+create table if not exists public.signup_checks (          -- 교차검수: 서로 다른 운영자 2명이 확인하면 확정
   signup_id  bigint not null references public.signups on delete cascade,
   kind       text not null check (kind in ('tier', 'score')),   -- 티어 확인 / 티어 점수 계산 재확인
   user_id    uuid not null,
@@ -143,7 +144,7 @@ create table if not exists public.signup_checks (          -- 교차검수: 서�
   primary key (signup_id, kind, user_id)
 );
 
-create table if not exists public.tasks (                  -- 회차별 운영진 할 일
+create table if not exists public.tasks (                  -- 회차별 운영자 할 일
   id         bigserial primary key,
   auction_id uuid not null references public.auctions on delete cascade,
   title      text not null,
@@ -157,7 +158,7 @@ create table if not exists public.tasks (                  -- 회차별 운영�
 
 create table if not exists public.staff_log (             -- 진행 기록: 누가 언제 무엇을 고쳤는지
   id         bigserial primary key,
-  auction_id uuid references public.auctions on delete cascade,   -- 비어 있으면 사이트 전체 일(운영진 승인 등)
+  auction_id uuid references public.auctions on delete cascade,   -- 비어 있으면 사이트 전체 일(운영자 승인 등)
   user_id    uuid,
   who        text not null default '',
   action     text not null,
@@ -165,6 +166,10 @@ create table if not exists public.staff_log (             -- 진행 기록: 누�
   created_at timestamptz not null default now()
 );
 create index if not exists staff_log_auction_idx on public.staff_log (auction_id, id desc);
+alter table public.staff_log add column if not exists event_title text not null default '';   -- 회차가 지워져도 기록에 이름이 남도록
+-- 회차를 지워도 진행 기록은 남김 (회차 칸만 비움)
+alter table public.staff_log drop constraint if exists staff_log_auction_id_fkey;
+alter table public.staff_log add constraint staff_log_auction_id_fkey foreign key (auction_id) references public.auctions on delete set null;
 alter table public.staff_log     enable row level security;
 revoke all on public.staff_log from anon, authenticated;
 
@@ -378,7 +383,7 @@ language plpgsql security definer set search_path = public as $$
 declare v_id uuid; v_err text; v_host text; v_keys jsonb := '[]'; v_k text; i int;
 begin
   if exists (select 1 from staff where role = 'owner') then
-    return jsonb_build_object('ok', false, 'reason', '진행자가 등록된 뒤에는 운영진 콘솔(admin.html)에서 회차를 만들어 주세요.');
+    return jsonb_build_object('ok', false, 'reason', '제작자가 등록된 뒤에는 운영자 콘솔(admin.html)에서 회차를 만들어 주세요.');
   end if;
   v_err := _check_players(p_config, p_players);
   if v_err is not null then return jsonb_build_object('ok', false, 'reason', v_err); end if;
@@ -679,7 +684,7 @@ begin
       update players set peak = coalesce(p_arg ->> 'peak', peak), current_tier = coalesce(p_arg ->> 'current', current_tier),
              score_override = case when p_arg ? 'score' then round(v_score, 1) else score_override end
        where auction_id = p_id and id = r.id;
-      -- 신청 명단에서 온 선수면 신청 명단(운영진 콘솔)에도 같이 반영
+      -- 신청 명단에서 온 선수면 신청 명단(운영자 콘솔)에도 같이 반영
       if r.signup_id is not null then
         update signups set peak = coalesce(p_arg ->> 'peak', peak), current_tier = coalesce(p_arg ->> 'current', current_tier),
                score_override = case when p_arg ? 'score' then round(v_score, 1) else score_override end,
@@ -830,7 +835,7 @@ grant execute on function public.signup_info(text), public.my_signup(text),
   public.submit_signup(text, text, text, text, text), public.get_signups(uuid, text) to anon, authenticated;
 
 -- =====================================================================
--- 운영진 콘솔 (admin.html) — 디스코드로 로그인한 진행자·운영진만
+-- 운영자 콘솔 (admin.html) — 디스코드로 로그인한 진행자·운영자만
 -- =====================================================================
 
 -- 로그인한 계정의 디스코드 이름 (서버가 로그인 정보에서 직접 꺼냄)
@@ -853,7 +858,7 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 create or replace function public._no() returns jsonb
-language sql immutable as $$ select jsonb_build_object('ok', false, 'reason', '운영진만 할 수 있어요. 디스코드로 로그인했는지 확인해 주세요.') $$;
+language sql immutable as $$ select jsonb_build_object('ok', false, 'reason', '운영자만 할 수 있어요. 디스코드로 로그인했는지 확인해 주세요.') $$;
 
 -- 진행 기록 남기기 (지금 로그인한 사람 이름으로)
 create or replace function public._slog(p_auction uuid, p_action text, p_detail text default '') returns void
@@ -861,8 +866,9 @@ language plpgsql security definer set search_path = public as $$
 declare d record;
 begin
   select * into d from _discord_of(auth.uid());
-  insert into staff_log (auction_id, user_id, who, action, detail)
-  values (p_auction, auth.uid(), coalesce(d.name, '알 수 없음'), p_action, left(coalesce(p_detail, ''), 500));
+  insert into staff_log (auction_id, user_id, who, action, detail, event_title)
+  values (p_auction, auth.uid(), coalesce(d.name, '알 수 없음'), p_action, left(coalesce(p_detail, ''), 500),
+          coalesce((select title from auctions where id = p_auction), ''));
 end $$;
 
 -- 기록에 쓸 한국 시각 글자
@@ -883,23 +889,23 @@ begin
     'name', d.name, 'username', d.username, 'avatar', d.avatar);
 end $$;
 
--- 진행자(주인) 등록: 아직 진행자가 없을 때, 진행자 링크(경매 진행자 열쇠)를 가진 사람만
+-- 제작자(사이트 주인) 등록: 아직 제작자가 없을 때, 진행자 링크(경매 진행자 열쇠)를 가진 사람만
 create or replace function public.claim_owner(p_id uuid, p_key text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare d record;
 begin
   if auth.uid() is null then return jsonb_build_object('ok', false, 'reason', '디스코드로 먼저 로그인해 주세요.'); end if;
-  if exists (select 1 from staff where role = 'owner') then return jsonb_build_object('ok', false, 'reason', '이미 진행자가 등록돼 있어요.'); end if;
+  if exists (select 1 from staff where role = 'owner') then return jsonb_build_object('ok', false, 'reason', '이미 제작자가 등록돼 있어요.'); end if;
   if (select role from _auth(p_id, p_key)) is distinct from 'host' then return jsonb_build_object('ok', false, 'reason', '진행자 링크가 올바르지 않아요.'); end if;
   select * into d from _discord_of(auth.uid());
   insert into staff (user_id, role, discord_name, discord_username, discord_avatar, approved_at)
   values (auth.uid(), 'owner', d.name, d.username, d.avatar, now())
   on conflict (user_id) do update set role = 'owner', approved_at = now();
-  perform _slog(null, '진행자 등록', d.name);
+  perform _slog(null, '제작자 등록', d.name);
   return jsonb_build_object('ok', true);
 end $$;
 
--- 운영진 요청 (초대 링크 + 디스코드 로그인) → 진행자가 승인해야 운영진이 됨
+-- 운영자 요청 (초대 링크 + 디스코드 로그인) → 진행자가 승인해야 운영자가 됨
 create or replace function public.request_staff(p_invite text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare d record; v_role text := _my_role();
@@ -912,7 +918,7 @@ begin
   select * into d from _discord_of(auth.uid());
   insert into staff (user_id, role, discord_name, discord_username, discord_avatar)
   values (auth.uid(), 'pending', d.name, d.username, d.avatar) on conflict (user_id) do nothing;
-  perform _slog(null, '운영진 요청', d.name);
+  perform _slog(null, '운영자 요청', d.name);
   return jsonb_build_object('ok', true, 'role', 'pending');
 end $$;
 
@@ -926,19 +932,19 @@ begin
           from staff where role <> 'pending' or _my_role() = 'owner');
 end $$;
 
--- 진행자만: 승인 / 거절 / 운영진에서 빼기
+-- 진행자만: 승인 / 거절 / 운영자에서 빼기
 create or replace function public.staff_decide(p_user uuid, p_action text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare v_name text;
 begin
-  if _my_role() is distinct from 'owner' then return jsonb_build_object('ok', false, 'reason', '진행자만 할 수 있어요.'); end if;
+  if _my_role() is distinct from 'owner' then return jsonb_build_object('ok', false, 'reason', '제작자만 할 수 있어요.'); end if;
   select discord_name into v_name from staff where user_id = p_user;
   if p_action = 'approve' then
     update staff set role = 'staff', approved_at = now() where user_id = p_user and role = 'pending';
-    if found then perform _slog(null, '운영진 승인', v_name); end if;
+    if found then perform _slog(null, '운영자 승인', v_name); end if;
   elsif p_action in ('reject', 'remove') then
     delete from staff where user_id = p_user and role <> 'owner';
-    if found then perform _slog(null, case p_action when 'reject' then '운영진 요청 거절' else '운영진에서 뺌' end, v_name); end if;
+    if found then perform _slog(null, case p_action when 'reject' then '운영자 요청 거절' else '운영자에서 뺌' end, v_name); end if;
   else return jsonb_build_object('ok', false, 'reason', '알 수 없는 조작이에요.');
   end if;
   return jsonb_build_object('ok', true);
@@ -968,6 +974,7 @@ begin
       'signups', (select count(*) from signups s where s.auction_id = a.id),
       'captains', (select count(*) from signups s where s.auction_id = a.id and s.captain),
       'team_count', (a.config ->> 'teamCount')::int,
+      'host_name', (select discord_name from staff where user_id = a.host_user), 'status_label', a.status,
       'tasks_open', (select count(*) from tasks t where t.auction_id = a.id and not t.done)) e
     from auctions a) x);
 end $$;
@@ -980,7 +987,7 @@ begin
   if not _is_staff() then return _no(); end if;
   if coalesce((p_config ->> 'teamCount')::int, 0) not between 2 and 8 then return jsonb_build_object('ok', false, 'reason', '팀 수 설정이 잘못됐어요.'); end if;
   select * into d from _discord_of(auth.uid());
-  insert into auctions (config, title, signup_mode) values (p_config, left(coalesce(trim(p_title), ''), 60), 'closed') returning id into v_id;
+  insert into auctions (config, title, signup_mode, host_user) values (p_config, left(coalesce(trim(p_title), ''), 60), 'closed', auth.uid()) returning id into v_id;
   insert into auction_keys (key, auction_id, role) values (replace(gen_random_uuid()::text, '-', ''), v_id, 'host');
   for i in 0 .. (p_config ->> 'teamCount')::int - 1 loop
     insert into auction_keys (key, auction_id, role, team_idx) values (replace(gen_random_uuid()::text, '-', ''), v_id, 'team', i);
@@ -1045,7 +1052,10 @@ begin
     'tasks', (select coalesce(jsonb_agg(jsonb_build_object('id', t.id, 'title', t.title, 'assignee', t.assignee,
         'due_at', _ms(t.due_at), 'done', t.done, 'created_by', t.created_by) order by t.done, t.due_at nulls last, t.id), '[]')
       from tasks t where t.auction_id = a.id),
-    'links', case when _my_role() = 'owner' then jsonb_build_object(
+    'host', jsonb_build_object('user_id', a.host_user, 'name', (select discord_name from staff where user_id = a.host_user)),
+    'can_host', _can_host(a.id),
+    'state', _state(a.id),
+    'links', case when _can_host(a.id) then jsonb_build_object(
         'host_key', (select key from auction_keys where auction_id = a.id and role = 'host'),
         'team_keys', (select jsonb_agg(key order by team_idx) from auction_keys where auction_id = a.id and role = 'team')) end);
 end $$;
@@ -1185,13 +1195,78 @@ begin
   return jsonb_build_object('ok', true);
 end $$;
 
+-- 이 회차의 경매 준비를 할 수 있는 사람: 그 회차의 진행자, 또는 제작자
+create or replace function public._can_host(p_id uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(_my_role() = 'owner' or (_is_staff() and (select host_user from auctions where id = p_id) = auth.uid()), false)
+$$;
+
+-- 진행자 넘기기 (지금 진행자 또는 제작자가, 다른 운영자에게)
+create or replace function public.set_event_host(p_id uuid, p_user uuid) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_from text; v_to text;
+begin
+  if not _can_host(p_id) then return jsonb_build_object('ok', false, 'reason', '이 회차의 진행자나 제작자만 진행자를 넘길 수 있어요.'); end if;
+  select discord_name into v_to from staff where user_id = p_user and role in ('owner', 'staff');
+  if v_to is null then return jsonb_build_object('ok', false, 'reason', '운영자에게만 넘길 수 있어요.'); end if;
+  select s.discord_name into v_from from auctions a left join staff s on s.user_id = a.host_user where a.id = p_id;
+  update auctions set host_user = p_user where id = p_id;
+  perform _slog(p_id, '진행자 넘김', format('%s → %s', coalesce(v_from, '없음'), v_to));
+  return jsonb_build_object('ok', true);
+end $$;
+
+-- 운영자 콘솔에서 경매 준비하기 (진행자·제작자만). 진행자 화면과 같은 규칙(host_action)을 그대로 씀
+create or replace function public.console_host_action(p_id uuid, p_action text, p_arg jsonb default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_key text; r jsonb;
+begin
+  if not _can_host(p_id) then return jsonb_build_object('ok', false, 'reason', '이 회차의 진행자나 제작자만 경매 준비를 할 수 있어요.'); end if;
+  if p_action not in ('load_signups', 'set_config', 'set_handicap', 'set_order') then
+    return jsonb_build_object('ok', false, 'reason', '운영자 콘솔에서 할 수 없는 조작이에요.');
+  end if;
+  select key into v_key from auction_keys where auction_id = p_id and role = 'host';
+  r := host_action(p_id, v_key, p_action, p_arg);
+  if (r ->> 'ok')::boolean then
+    perform _slog(p_id, case p_action when 'load_signups' then '경매 선수 채움' when 'set_config' then '경매 설정 바꿈'
+                                      when 'set_handicap' then '핸디캡 바꿈' else '경매 순서 확정' end,
+      case p_action
+        when 'load_signups' then format('팀장 %s명, 경매 선수 %s명', jsonb_array_length(r -> 'state' -> 'teams'), jsonb_array_length(r -> 'state' -> 'queue'))
+        when 'set_handicap' then format('%s: %sP', r -> 'state' -> 'teams' -> ((p_arg ->> 'team')::int) ->> 'name', p_arg ->> 'amount')
+        when 'set_config' then (select string_agg(format('%s=%s', k, case when k = 'tierScores' then '(점수표)' else v #>> '{}' end), ', ')
+                                from jsonb_each(p_arg) e(k, v))
+        else format('%s명', jsonb_array_length(p_arg)) end);
+  end if;
+  return r;
+end $$;
+
+-- 회차(내전) 지우기: 그 회차의 진행자나 제작자만. 실수 방지로 회차 이름을 똑같이 적어야 함
+create or replace function public.delete_event(p_id uuid, p_confirm text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare a auctions; v_title text; v_signups int;
+begin
+  if not _can_host(p_id) then return jsonb_build_object('ok', false, 'reason', '이 회차의 진행자나 제작자만 지울 수 있어요.'); end if;
+  select * into a from auctions where id = p_id;
+  v_title := coalesce(nullif(a.title, ''), '이름 없는 회차');
+  if coalesce(trim(p_confirm), '') <> v_title then return jsonb_build_object('ok', false, 'reason', '회차 이름이 맞지 않아요. 똑같이 적어 주세요.'); end if;
+  select count(*) into v_signups from signups where auction_id = p_id;
+  perform _slog(null, '회차 지움', format('%s (신청 %s명, 상태 %s)', v_title, v_signups, a.status));
+  delete from auctions where id = p_id;   -- 선수·팀·신청·검수·할 일·채팅·링크가 함께 지워짐 (진행 기록은 남음)
+  return jsonb_build_object('ok', true);
+end $$;
+revoke execute on function public.delete_event(uuid, text) from public;
+grant execute on function public.delete_event(uuid, text) to anon, authenticated;
+
+revoke execute on function public._can_host(uuid) from public, anon, authenticated;
+revoke execute on function public.set_event_host(uuid, uuid), public.console_host_action(uuid, text, jsonb) from public;
+grant execute on function public.set_event_host(uuid, uuid), public.console_host_action(uuid, text, jsonb) to anon, authenticated;
+
 -- 진행 기록 보기: 회차 하나(p_id) 또는 사이트 전체(p_id 없음)
 create or replace function public.get_log(p_id uuid default null, p_limit int default 300) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 begin
   if not _is_staff() then return null; end if;
   return (select coalesce(jsonb_agg(jsonb_build_object('id', l.id, 'who', l.who, 'action', l.action, 'detail', l.detail,
-            'at', _ms(l.created_at), 'event', coalesce(nullif(a.title, ''), case when l.auction_id is not null then '이름 없는 회차' end)) order by l.id desc), '[]')
+            'at', _ms(l.created_at), 'event', coalesce(nullif(a.title, ''), nullif(l.event_title, ''), case when l.auction_id is not null then '이름 없는 회차' end)) order by l.id desc), '[]')
           from (select * from staff_log
                 where (p_id is null or auction_id = p_id)
                 order by id desc limit least(greatest(coalesce(p_limit, 300), 1), 1000)) l

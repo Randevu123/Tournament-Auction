@@ -3,259 +3,34 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>내전 선수 경매 (연습판)</title>
+<title>내전 경매 연습판</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="common.css">
 <style>
-  :root {
-    --bg: #0b0d14;
-    --panel: #141824;
-    --panel-2: #1b2030;
-    --line: #2a3145;
-    --text: #eef1f8;
-    --muted: #8a93ab;
-    --accent: #ff4655;
-    --gold: #ffd166;
-    --ok: #3ddc97;
-    --warn: #ffb020;
-    --num: "Black Han Sans", "Noto Sans KR", system-ui, sans-serif;
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; }
-  body {
-    background:
-      radial-gradient(1200px 600px at 50% -10%, rgba(255,70,85,.18), transparent 60%),
-      radial-gradient(900px 500px at 100% 110%, rgba(80,120,255,.12), transparent 60%),
-      var(--bg);
-    color: var(--text);
-    font-family: "Noto Sans KR", system-ui, sans-serif;
-    min-height: 100vh;
-  }
-  button { font: inherit; cursor: pointer; }
-  button:disabled { cursor: not-allowed; opacity: .28; filter: grayscale(.8); }
-  input, select { font: inherit; }
-
-  /* ---------- 프로필 사진 ---------- */
-  .av { display: inline-grid; place-items: center; flex: none; border-radius: 12px; object-fit: cover; background: #2a3145; color: #fff; font-family: var(--num); overflow: hidden; }
-  .av.ph { background: linear-gradient(135deg, #3a4260, #1d2233); }
-
-  /* ---------- 상단 바 ---------- */
-  header {
-    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-    padding: 12px 20px; border-bottom: 1px solid var(--line);
-    background: rgba(10,12,20,.7); backdrop-filter: blur(6px);
-  }
-  .logo { font-family: var(--num); font-size: 26px; letter-spacing: 1px; }
-  .logo span { color: var(--accent); }
-  .badge { font-size: 12px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); }
-  .spacer { flex: 1; }
-  .ctrl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .btn {
-    background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
-    padding: 8px 14px; border-radius: 8px; font-weight: 700;
-  }
-  .btn:hover:not(:disabled) { border-color: #4a5577; }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .btn.gold { background: var(--gold); border-color: var(--gold); color: #1a1400; }
-  .btn.big { font-size: 20px; padding: 14px 28px; border-radius: 12px; }
-  .chk { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
-
-  /* ---------- 가운데 영역 ---------- */
-  .main {
-    display: grid; grid-template-columns: 240px 1fr 280px; gap: 16px;
-    padding: 16px 20px;
-  }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
-  .panel h3 { margin: 0 0 10px; font-size: 13px; letter-spacing: 2px; color: var(--muted); font-weight: 700; }
-
-  .queue { max-height: 470px; overflow: auto; }
-  .queue ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-  .queue li {
-    display: flex; justify-content: space-between; gap: 8px; align-items: center;
-    padding: 5px 8px; background: var(--panel-2); border-radius: 8px; font-size: 13px;
-  }
-  .queue li .n { color: var(--muted); width: 18px; }
-  .queue li .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tag-unsold { font-size: 11px; color: var(--warn); border: 1px solid var(--warn); border-radius: 4px; padding: 0 4px; }
-
-  /* 무대 */
-  .stage {
-    display: grid; grid-template-columns: 1.1fr 1fr; gap: 20px;
-    background: linear-gradient(160deg, #1a1f30, #10131d);
-    border: 1px solid var(--line); border-radius: 18px; padding: 22px; position: relative; overflow: hidden;
-  }
-  .stage::after {
-    content: ""; position: absolute; inset: 0; pointer-events: none;
-    background: repeating-linear-gradient(135deg, rgba(255,255,255,.015) 0 2px, transparent 2px 12px);
-  }
-  .card-label { font-size: 12px; letter-spacing: 3px; color: var(--accent); font-weight: 900; }
-  .p-top { display: flex; gap: 18px; align-items: center; margin: 10px 0 12px; }
-  .p-top .av { border: 3px solid rgba(255,255,255,.12); box-shadow: 0 10px 30px rgba(0,0,0,.4); }
-  .p-name { font-family: var(--num); font-size: clamp(34px, 4.2vw, 64px); line-height: 1.05; word-break: break-all; }
-  .p-pos { display: inline-block; margin-top: 8px; padding: 4px 12px; border-radius: 999px; background: rgba(255,70,85,.15); color: #ff8c96; font-weight: 700; font-size: 14px; }
-  .p-motto { margin: 4px 0 0; padding: 10px 14px; border-left: 3px solid var(--gold); background: rgba(255,209,102,.06); border-radius: 0 10px 10px 0; font-size: 16px; min-height: 20px; }
-  .p-motto:empty { display: none; }
-  .p-tiers { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 14px; }
-  .p-tiers div { background: rgba(255,255,255,.04); border-radius: 10px; padding: 10px; }
-  .p-tiers small { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
-  .p-tiers b { font-size: 16px; }
-  .p-tiers b em { font-style: normal; font-weight: 400; font-size: 13px; color: var(--muted); }
-  .p-tiers .score b { font-family: var(--num); font-size: 26px; color: var(--gold); font-weight: 400; }
-  .p-unsold { margin-top: 12px; font-size: 13px; color: var(--warn); min-height: 18px; }
-
-  .bidbox { display: flex; flex-direction: column; gap: 14px; }
-  .bid-now small, .timer small { font-size: 12px; letter-spacing: 3px; color: var(--muted); font-weight: 700; }
-  .bid-amount { font-family: var(--num); font-size: clamp(64px, 8vw, 120px); line-height: 1; color: var(--gold); text-shadow: 0 0 30px rgba(255,209,102,.35); }
-  .bid-amount.bump { animation: bump .35s ease; }
-  @keyframes bump { 0% { transform: scale(1.18); } 100% { transform: scale(1); } }
-  .bid-leader { font-size: 18px; font-weight: 900; min-height: 26px; }
-  .timer-num { font-family: var(--num); font-size: clamp(44px, 5vw, 72px); line-height: 1; }
-  .timer-num.low { color: var(--accent); animation: blink .5s steps(2) infinite; }
-  @keyframes blink { 50% { opacity: .45; } }
-  .timer-plus { font-family: var(--num); color: var(--ok); font-size: 28px; margin-left: 10px; opacity: 0; }
-  .timer-plus.show { animation: plus 1s ease forwards; }
-  @keyframes plus { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-24px); } }
-  .bar { height: 10px; background: rgba(255,255,255,.08); border-radius: 999px; overflow: hidden; margin-top: 8px; }
-  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--gold)); }
-  .state-line { font-size: 13px; color: var(--muted); }
-
-  .setup-box { grid-column: 1 / -1; text-align: center; padding: 30px 10px; display: grid; gap: 16px; justify-items: center; }
-  .setup-box h2 { font-family: var(--num); font-weight: 400; font-size: clamp(30px, 4vw, 52px); margin: 0; }
-  .setup-box p { margin: 0; color: var(--muted); }
-  .setup-box .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-
-  /* 기록 */
-  .log { max-height: 470px; overflow: auto; }
-  .log ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
-  .log li { padding: 6px 8px; background: var(--panel-2); border-radius: 8px; border-left: 3px solid var(--line); }
-  .log li.sold { border-left-color: var(--gold); }
-  .log li.unsold { border-left-color: var(--warn); }
-  .log li.bid { border-left-color: var(--ok); }
-
-  /* ---------- 팀 영역 ---------- */
-  .teams { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; padding: 0 20px 24px; }
-  .team {
-    background: var(--panel); border: 1px solid var(--line); border-top: 5px solid var(--c);
-    border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
-    transition: box-shadow .2s, transform .2s;
-  }
-  .team.leading { box-shadow: 0 0 0 2px var(--c), 0 0 28px color-mix(in srgb, var(--c) 55%, transparent); transform: translateY(-3px); }
-  .team.pulse { animation: tpulse .45s ease; }
-  @keyframes tpulse { 0% { background: color-mix(in srgb, var(--c) 35%, var(--panel)); } 100% { background: var(--panel); } }
-  .team-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-  .team-name { font-family: var(--num); font-size: 20px; color: var(--c); display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .team-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .team-slots { font-size: 13px; color: var(--muted); white-space: nowrap; }
-  .team-slots b { color: var(--text); font-size: 16px; }
-  .team-points { font-family: var(--num); font-size: 40px; line-height: 1; }
-  .team-points small { font-family: "Noto Sans KR"; font-size: 12px; color: var(--muted); margin-left: 4px; }
-  .team-points.changed { animation: pchg .8s ease; }
-  @keyframes pchg { 0% { color: var(--accent); transform: scale(1.12); } 100% { color: var(--text); transform: scale(1); } }
-  .team-max { font-size: 12px; color: var(--muted); }
-  .team-max b { color: var(--ok); }
-  .team-score { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .team-score div { background: rgba(255,255,255,.04); border-radius: 8px; padding: 6px 8px; }
-  .team-score small { display: block; font-size: 11px; color: var(--muted); }
-  .team-score b { font-family: var(--num); font-size: 20px; font-weight: 400; color: var(--gold); }
-  .roster { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; min-height: 170px; }
-  .roster li { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 13px; padding: 4px 8px; border-radius: 6px; background: var(--panel-2); }
-  .roster li .who { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  .roster li .who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .roster li.empty { background: transparent; border: 1px dashed var(--line); color: var(--muted); min-height: 30px; }
-  .roster li .pr { color: var(--gold); font-weight: 700; white-space: nowrap; }
-  .roster li .rnd { color: var(--warn); }
-  .roster li .cap { color: var(--c); }
+  /* 연습판: 한 사람이 모든 팀 버튼을 누름 */
   .bids { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .bids .q { background: var(--c); color: #0b0d14; border: 0; border-radius: 8px; padding: 10px 0; font-weight: 900; font-size: 16px; }
   .bids .direct { grid-column: 1 / -1; display: flex; gap: 6px; }
   .bids .direct input { flex: 1; min-width: 0; background: var(--panel-2); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 8px; }
   .bids .direct button { background: var(--panel-2); color: var(--c); border: 1px solid var(--c); border-radius: 8px; padding: 0 12px; font-weight: 900; }
-  .why { font-size: 12px; color: var(--muted); min-height: 16px; }
-
-  /* ---------- 낙찰 번쩍 ---------- */
-  .flash {
-    position: fixed; inset: 0; display: none; place-items: center; z-index: 50; pointer-events: none;
-    background: radial-gradient(circle at center, color-mix(in srgb, var(--c) 60%, transparent), rgba(0,0,0,.85) 70%);
-  }
-  .flash.show { display: grid; animation: flashbg 2.2s ease forwards; }
-  @keyframes flashbg {
-    0% { opacity: 0; } 6% { opacity: 1; background-color: rgba(255,255,255,.9); }
-    14% { background-color: transparent; } 85% { opacity: 1; } 100% { opacity: 0; }
-  }
-  .flash-inner { text-align: center; animation: pop .5s cubic-bezier(.2,1.6,.4,1); display: grid; justify-items: center; gap: 10px; }
-  @keyframes pop { 0% { transform: scale(.4); } 100% { transform: scale(1); } }
-  .flash-title { font-family: var(--num); font-size: clamp(80px, 14vw, 200px); line-height: 1; color: #fff; text-shadow: 0 0 40px var(--c), 0 0 90px var(--c); }
-  .flash-sub { font-family: var(--num); font-size: clamp(28px, 4vw, 54px); }
-  .flash-sub em { font-style: normal; color: var(--c); }
-  .flash .av { border: 4px solid var(--c); box-shadow: 0 0 40px var(--c); }
-
-  /* ---------- 순서 뽑기 ---------- */
-  .overlay { position: fixed; inset: 0; z-index: 40; display: none; background: rgba(5,6,10,.93); overflow: auto; }
-  .overlay.show { display: block; }
-  .draw { max-width: 1200px; margin: 0 auto; padding: 28px 16px; display: grid; grid-template-columns: 1fr 1.1fr; gap: 28px; align-items: start; }
-  .draw h2 { grid-column: 1 / -1; margin: 0; text-align: center; font-family: var(--num); font-weight: 400; font-size: clamp(32px, 4vw, 54px); }
-  .draw h2 span { color: var(--accent); }
-  .roulette { display: grid; justify-items: center; gap: 14px; padding: 28px; border-radius: 20px; background: linear-gradient(160deg, #1a1f30, #10131d); border: 1px solid var(--line); position: sticky; top: 20px; }
-  .roulette .pick-no { font-family: var(--num); font-size: 28px; color: var(--accent); }
-  .roulette .r-name { font-family: var(--num); font-size: clamp(34px, 4vw, 56px); text-align: center; word-break: break-all; }
-  .roulette.locked .r-name { color: var(--gold); text-shadow: 0 0 24px rgba(255,209,102,.5); animation: bump .35s ease; }
-  .roulette .r-sub { color: var(--muted); min-height: 22px; }
-  .order-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .order-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; animation: slidein .35s ease; }
-  .order-list li b { font-family: var(--num); font-weight: 400; color: var(--accent); width: 26px; font-size: 20px; }
-  .order-list li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  @keyframes slidein { 0% { opacity: 0; transform: translateX(20px); } 100% { opacity: 1; transform: none; } }
-  .draw-ctrl { grid-column: 1 / -1; display: flex; gap: 10px; justify-content: center; }
-
-  /* ---------- 선수 관리 ---------- */
-  .editor { max-width: 1300px; margin: 0 auto; padding: 24px 16px 40px; }
-  .editor-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; position: sticky; top: 0; background: rgba(5,6,10,.95); padding: 10px 0; z-index: 2; }
-  .editor-head h2 { margin: 0; font-family: var(--num); font-weight: 400; font-size: 32px; }
-  .cap-count { font-weight: 900; }
-  .cap-count.bad { color: var(--accent); }
-  .cap-count.good { color: var(--ok); }
-  .ed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)); gap: 12px; }
-  .ed { display: flex; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
-  .ed.captain { border-color: var(--gold); }
-  .ed-photo { display: grid; gap: 6px; justify-items: center; flex: none; }
-  .ed-photo label { cursor: pointer; position: relative; }
-  .ed-photo label::after { content: "사진 바꾸기"; position: absolute; inset: auto 0 0 0; font-size: 10px; text-align: center; background: rgba(0,0,0,.65); border-radius: 0 0 12px 12px; padding: 2px 0; }
-  .ed-photo input { display: none; }
-  .ed-photo button { font-size: 11px; background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 0; }
-  .ed-fields { display: grid; gap: 6px; flex: 1; min-width: 0; }
-  .ed-fields .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .ed-fields input, .ed-fields select { width: 100%; min-width: 0; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 13px; }
-  .ed-fields input[type=checkbox] { width: auto; }
-  .ed-fields small { font-size: 11px; color: var(--muted); }
-  .ed-cap { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--gold); }
-
-  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #2b1115; border: 1px solid var(--accent); color: #ffd2d6; padding: 10px 16px; border-radius: 10px; display: none; z-index: 60; max-width: calc(100% - 32px); }
-
-  @media (max-width: 1200px) {
-    .main { grid-template-columns: 1fr; }
-    .queue, .log { max-height: 220px; }
-    .teams { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-  }
-  @media (max-width: 800px) {
-    header, .main, .teams { padding-left: 16px; padding-right: 16px; }
-    .stage, .draw { grid-template-columns: 1fr; }
-    .roulette { position: static; }
-    .order-list { grid-template-columns: 1fr; }
-  }
+  .ed-fields .score-in { width: 100%; }
 </style>
 </head>
 <body>
 
 <header>
   <div class="logo">VALORANT <span>내전 경매</span></div>
-  <span class="badge">연습판 · 이 화면에서만 동작</span>
+  <span class="badge">연습판 · 이 화면에서만 동작 · 서버 없음</span>
   <div class="spacer"></div>
   <div class="ctrl">
     <span class="state-line" id="progress"></span>
     <button class="btn" id="btnEdit">선수 관리</button>
+    <button class="btn" id="btnSettings">경매 설정</button>
     <button class="btn primary" id="btnStart">경매 시작 (Space)</button>
     <button class="btn" id="btnPause">일시정지</button>
     <button class="btn gold" id="btnHammer">지금 마감</button>
+    <button class="btn" id="btnNext">다음 선수</button>
     <label class="chk"><input type="checkbox" id="autoNext"> 다음 선수 자동 시작</label>
     <button class="btn" id="btnReset">처음부터 다시</button>
   </div>
@@ -269,11 +44,17 @@
 
   <section class="stage" id="stage">
     <div class="setup-box" id="setupBox">
-      <h2>팀장 5명 · 선수 20명</h2>
-      <p>‘선수 관리’에서 사진, 각오 한마디, 티어, 팀장을 확인한 뒤 경매 순서를 뽑으세요.</p>
+      <h2 id="setupTitle">연습 준비</h2>
+      <ol class="steps">
+        <li><b>선수 관리</b>에서 팀장(최대 8명, 팀 수 = 팀장 수)·티어·점수·사진·각오를 정하기</li>
+        <li><b>경매 설정</b>에서 시작 포인트·입찰 단위·팀 인원·핸디캡·점수표 정하기</li>
+        <li>경매 순서를 <b>무작위로 뽑거나</b> <b>직접 정하기</b></li>
+      </ol>
       <div class="row">
-        <button class="btn big" id="btnEdit2">선수 관리</button>
-        <button class="btn primary big" id="btnDraw">경매 순서 뽑기</button>
+        <button class="btn big" id="btnEdit2">① 선수 관리</button>
+        <button class="btn big" id="btnSettings2">② 경매 설정</button>
+        <button class="btn big" id="btnOrder">③ 순서 직접 정하기</button>
+        <button class="btn primary big" id="btnDraw">③ 순서 무작위로 뽑기</button>
       </div>
     </div>
     <div id="lotLeft">
@@ -316,7 +97,41 @@
 
 <section class="teams" id="teams"></section>
 
-<!-- 경매 순서 뽑기 화면 -->
+<!-- 경매 설정 -->
+<div class="overlay" id="settingsOverlay">
+  <div class="links">
+    <h2>경매 설정 (연습판)</h2>
+    <p id="settingsNote"></p>
+    <div class="set-grid">
+      <label>시작 포인트<input type="number" id="cfStart" min="10" step="1"></label>
+      <label>입찰 단위<input type="number" id="cfStep" min="1" step="1"></label>
+      <label>팀 인원 (팀장 포함)<input type="number" id="cfSize" min="1" max="12" step="1"></label>
+      <label>빈자리 1칸당 남길 포인트<input type="number" id="cfReserve" min="0" step="1"></label>
+    </div>
+    <h3 class="set-h">팀장 핸디캡 (시작 포인트에서 깎기)</h3>
+    <div class="set-grid" id="cfHandicaps"></div>
+    <h3 class="set-h">티어 점수 계산</h3>
+    <div class="weight">
+      <label>최고 티어 비율 <b id="cfWeightLabel">50%</b><input type="range" id="cfWeight" min="0" max="100" step="5"></label>
+      <div class="calc" id="cfExample"></div>
+    </div>
+    <div class="tier-grid" id="cfTiers"></div>
+    <div><button class="btn" id="btnTierDefault" type="button">기본 점수표로 (아이언1 = 1점 … 레디언트 = 25점)</button></div>
+    <div class="draw-ctrl"><button class="btn" id="btnSettingsClose">닫기</button><button class="btn primary big" id="btnSettingsSave">저장</button></div>
+  </div>
+</div>
+
+<!-- 순서 직접 정하기 -->
+<div class="overlay" id="orderOverlay">
+  <div class="links">
+    <h2>경매 순서 직접 정하기</h2>
+    <p>▲▼로 순서를 바꾸세요. 위에서부터 차례로 경매에 올라와요.</p>
+    <ol class="order-edit" id="orderEdit"></ol>
+    <div class="draw-ctrl"><button class="btn" id="btnOrderClose">닫기</button><button class="btn" id="btnOrderShuffle">무작위로 섞기</button><button class="btn primary big" id="btnOrderSave">이 순서로 확정</button></div>
+  </div>
+</div>
+
+<!-- 경매 순서 뽑기 -->
 <div class="overlay" id="drawOverlay">
   <div class="draw">
     <h2>경매 순서 <span>추첨</span></h2>
@@ -334,13 +149,14 @@
   </div>
 </div>
 
-<!-- 선수 관리 화면 -->
+<!-- 선수 관리 -->
 <div class="overlay" id="editOverlay">
   <div class="editor">
     <div class="editor-head">
       <h2>선수 관리</h2>
       <span class="cap-count" id="capCount"></span>
       <div class="spacer"></div>
+      <button class="btn" id="btnEdAdd">선수 추가</button>
       <button class="btn" id="btnEdDefault">기본값으로 되돌리기</button>
       <button class="btn" id="btnEdCancel">닫기</button>
       <button class="btn primary" id="btnEdSave">저장</button>
@@ -352,369 +168,252 @@
 <div class="flash" id="flash"><div class="flash-inner"><div id="flashPhoto"></div><div class="flash-title" id="flashTitle">SOLD</div><div class="flash-sub" id="flashSub"></div></div></div>
 <div class="toast" id="toast"></div>
 
+<script src="common.js"></script>
 <script>
 /* =====================================================================
-   [1] 바꾸기 쉬운 숫자 모음 — 규칙을 바꾸고 싶으면 여기만 고치세요
+   연습판 — 온라인 경매와 같은 규칙·점수 계산(common.js)을 이 화면 안에서만 돌림
+   (서버가 하는 판정: 빈자리 몫, 입찰 단위, 시간 +5초/최대 30초, 유찰 2번이면 무작위 배정, 핸디캡)
    ===================================================================== */
-const CONFIG = {
-  teamCount: 5,          // 팀 수 (= 팀장 수)
-  startPoints: 1000,     // 팀 시작 포인트
-  bidStep: 5,            // 최소 입찰 단위 (직접 입력도 이 단위로만 가능)
-  quickBids: [5, 10],    // 팀별 빠른 입찰 버튼 (+5, +10)
-  teamSize: 5,           // 한 팀 인원 (팀장 포함)
-  reservePerSlot: 5,     // 빈자리 1칸당 남겨 둬야 하는 최소 포인트
-  startSeconds: 15,      // 선수 한 명당 처음 주어지는 시간(초)
-  bidAddSeconds: 5,      // 입찰할 때마다 늘어나는 시간(초)
-  maxSeconds: 30,        // 남은 시간 최대치(초)
-  maxUnsold: 2,          // 이 횟수만큼 유찰되면 빈자리 팀에 무작위 배정
-  resultShowMs: 2200,    // 낙찰/유찰 화면을 보여 주는 시간(밀리초)
-  mottoMaxLength: 40,    // 각오 한마디 최대 글자 수
-  photoSize: 240,        // 올린 사진을 이 크기(픽셀)의 정사각형으로 줄여 저장
-};
+const $ = id => document.getElementById(id);
+const PROFILE_KEY = "valo-auction-profiles-v1", PRACTICE_CFG_KEY = "valo-practice-config-v1";
+let P = null, profiles = [], lastSeq = 0;
 
-/* =====================================================================
-   [2] 티어 점수표와 계산 방식 — 점수를 바꾸고 싶으면 여기만 고치세요
-   아이언1 = 1점, 한 칸 오를 때마다 +1점, 레디언트 = 25점
-   ===================================================================== */
-const TIER_GROUPS = [
-  ["아이언", 3], ["브론즈", 3], ["실버", 3], ["골드", 3], ["플래티넘", 3],
-  ["다이아몬드", 3], ["초월자", 3], ["불멸", 3], ["레디언트", 1],
-];
-const TIER_SCORE = {};
-(() => {
-  let s = 1;
-  for (const [name, steps] of TIER_GROUPS) {
-    if (steps === 1) TIER_SCORE[name] = s++;
-    else for (let i = 1; i <= steps; i++) TIER_SCORE[`${name} ${i}`] = s++;
-  }
-})();
-// 선수 점수 = (최고 티어 점수 + 현재 티어 점수) ÷ 2, 소수점 첫째 자리까지
-function playerScore(p) {
-  return round1(((TIER_SCORE[p.peak] || 0) + (TIER_SCORE[p.current] || 0)) / 2);
+function loadCfg() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(PRACTICE_CFG_KEY) || "{}") || {}; } catch (e) { /* 기본값 */ }
+  return { ...CONFIG, tierScores: { ...TIER_SCORE }, handicaps: {}, ...saved };
 }
-// 팀 점수 = 팀장을 포함한 선수 점수 합계, 평균 = 합계 ÷ 선수 수
-function teamScore(team) {
-  const sum = round1(team.roster.reduce((a, r) => a + playerScore(r.player), 0));
-  const avg = team.roster.length ? round1(sum / team.roster.length) : null;
-  return { sum, avg };
-}
-function round1(n) { return Math.round(n * 10) / 10; }
-
-/* =====================================================================
-   [3] 가짜 선수 25명 (팀장 5명 + 경매 선수 20명)
-   ===================================================================== */
-const POSITIONS = ["타격대", "척후대", "감시자", "전략가"];
-const TEAM_COLORS = ["#ff4655", "#4da3ff", "#3ddc97", "#ffc93c", "#b67cff", "#ff8a3d", "#39d0e0", "#ff6fb5"];
-// [닉네임, 최고 티어, 현재 티어, 포지션, 팀장 여부, 각오 한마디]
-const PLAYERS_SEED = [
-  ["새벽고양이", "불멸 2", "초월자 3", "타격대", true, "우승 아니면 은퇴합니다"],
-  ["한강라면", "다이아몬드 1", "플래티넘 3", "전략가", true, "연막 하나는 자신 있어요"],
-  ["멍때리는부엉이", "골드 3", "골드 1", "감시자", false, "사이트는 제가 지킵니다"],
-  ["조준점요정", "초월자 1", "다이아몬드 2", "타격대", false, "헤드 아니면 안 쏩니다"],
-  ["연막장인", "플래티넘 2", "플래티넘 1", "전략가", false, "시야는 제가 가려 드릴게요"],
-  ["섬광은사랑", "실버 3", "실버 2", "척후대", false, "섬광 쓰기 전에 말할게요"],
-  ["헤드만노림", "레디언트", "불멸 3", "타격대", false, "싸게 사면 이득입니다"],
-  ["수비의신", "다이아몬드 3", "다이아몬드 1", "감시자", true, "한 명도 못 지나갑니다"],
-  ["드론조종사", "골드 2", "실버 3", "척후대", false, "정보는 제가 먼저"],
-  ["고구마맛탕", "브론즈 3", "브론즈 2", "감시자", false, "열심히 배우겠습니다"],
-  ["칼침전문가", "불멸 1", "초월자 2", "타격대", false, "칼 들면 조심하세요"],
-  ["밤하늘연막", "초월자 2", "초월자 1", "전략가", true, "오더는 제가 합니다"],
-  ["달리는토끼", "실버 1", "브론즈 3", "타격대", false, "일단 들어가고 봅니다"],
-  ["정보수집가", "플래티넘 3", "골드 3", "척후대", false, "적 위치 다 불러 드림"],
-  ["철벽함정", "골드 1", "골드 1", "감시자", false, "함정 위치는 비밀"],
-  ["초코우유", "아이언 3", "아이언 2", "전략가", false, "재밌게 하는 게 목표"],
-  ["에임연습중", "다이아몬드 2", "플래티넘 2", "타격대", false, "연습한 만큼 보여 드림"],
-  ["바람의검객", "초월자 3", "초월자 2", "타격대", false, "대시 한 번에 끝냅니다"],
-  ["포켓힐러", "플래티넘 1", "골드 2", "감시자", false, "팀원 체력은 제가 책임"],
-  ["스캔한번만", "불멸 3", "불멸 1", "척후대", true, "스캔 맞으면 끝입니다"],
-  ["늦잠대장", "브론즈 1", "아이언 3", "척후대", false, "경기 시간엔 깨어 있겠습니다"],
-  ["벽뒤의그림자", "다이아몬드 1", "다이아몬드 1", "전략가", false, "벽 뒤에서 기다릴게요"],
-  ["클러치장인", "초월자 1", "플래티넘 3", "감시자", false, "1대3도 해 봤습니다"],
-  ["노란우산", "실버 2", "실버 1", "전략가", false, "우산처럼 팀을 지킵니다"],
-  ["마지막한발", "골드 3", "골드 2", "척후대", false, "마지막 한 발은 꼭 맞힘"],
-];
-function seedProfiles() {
-  return PLAYERS_SEED.map(([name, peak, current, pos, captain, motto], i) =>
-    ({ id: i, name, peak, current, pos, captain, motto, photo: "" }));
-}
-
-/* =====================================================================
-   [4] 선수 정보 저장 (이 브라우저 안에만 저장됩니다)
-   ===================================================================== */
-const STORE_KEY = "valo-auction-profiles-v1";
-function loadProfiles() {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) {
-      const list = JSON.parse(raw);
-      if (Array.isArray(list) && list.length) return list;
-    }
-  } catch (e) { /* 저장소를 못 쓰면 기본값으로 */ }
-  return seedProfiles();
-}
+function saveCfg(cfg) { try { localStorage.setItem(PRACTICE_CFG_KEY, JSON.stringify(cfg)); } catch (e) { /* 저장 불가여도 이번 연습은 됨 */ } }
+function loadProfiles() { return localProfiles().map((p, i) => ({ ...p, id: i })); }
 function saveProfiles(list) {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); return true; }
-  catch (e) { toast("저장 공간이 부족하거나 저장이 막혀 있어요. 사진 수를 줄여 보세요."); return false; }
+  try { localStorage.setItem(PROFILE_KEY, JSON.stringify(list)); return true; }
+  catch (e) { toast("저장 공간이 부족해요. 사진 수를 줄여 보세요."); return false; }
 }
+function log(body, kind = "") { P.events.unshift({ id: Date.now() + Math.random(), kind, body }); P.events.length = Math.min(P.events.length, 60); }
 
-/* =====================================================================
-   [5] 경매 진행 로직
-   ===================================================================== */
-let profiles, teams, queue, current, bid, state, endAt, pausedLeft, nextTimer;
-// state: setup(준비) / draw(순서 뽑기) / ready(선수 올라옴) / running(진행 중)
-//        paused(일시정지) / result(결과 표시 중) / done(끝)
-
+/* ---------- 경매 상태 만들기 (온라인과 같은 모양) ---------- */
 function init() {
-  clearTimeout(nextTimer);
   stopDraw();
   profiles = loadProfiles();
-  const players = profiles.map(p => ({ ...p, unsold: 0 }));
-  const captains = players.filter(p => p.captain);
-  teams = captains.map((c, i) => ({
-    id: i, name: `${c.name} 팀`, color: TEAM_COLORS[i % TEAM_COLORS.length],
-    points: CONFIG.startPoints, roster: [{ player: c, price: 0, captain: true }],
-  }));
-  queue = players.filter(p => !p.captain);
-  current = null;
-  bid = { amount: 0, team: null };
-  state = "setup";
-  document.getElementById("log").innerHTML = "";
-  buildTeams();
-  render();
-  addLog(`준비 — 팀장 ${captains.length}명, 경매 선수 ${queue.length}명, 팀당 ${CONFIG.startPoints}포인트`);
+  const cfg = loadCfg();
+  const players = profiles.map((p, i) => ({ id: i, name: p.name, peak: p.peak, current: p.current, pos: p.pos, captain: !!p.captain,
+    motto: p.motto || "", photo: p.photo || "", score: p.score ?? null, unsold: 0, team: null, price: null, how: null }));
+  const caps = players.filter(p => p.captain);
+  cfg.teamCount = caps.length;
+  const teams = caps.map((c, i) => {
+    const hc = Number(cfg.handicaps[c.name] || 0);
+    c.team = i; c.price = 0; c.how = "captain";
+    return { idx: i, name: `${c.name} 팀`, color: cfg.teamColors[i % cfg.teamColors.length], handicap: hc, points: cfg.startPoints - hc };
+  });
+  P = { status: "setup", config: cfg, teams, players, queue: players.filter(p => !p.captain).map(p => p.id), current: null,
+        bid_amount: 0, bid_team: null, ends_at: null, paused_left_ms: null, next_at: null, auto_start: $("autoNext").checked,
+        last_result: null, events: [] };
+  setScoreConfig(cfg);
+  log(`준비 — 팀장 ${teams.length}명, 경매 선수 ${P.queue.length}명, 시작 ${cfg.startPoints}P`);
+  buildTeams(); render();
 }
 
-function openSlots(team) { return CONFIG.teamSize - team.roster.length; }
-
-// 빈자리 규칙: 이번 선수를 산 뒤에도 남는 빈자리 1칸마다 reservePerSlot 포인트를 남겨야 함
-function maxBid(team) {
-  const open = openSlots(team);
-  if (open <= 0) return 0;
-  return team.points - CONFIG.reservePerSlot * (open - 1);
-}
+const rosterOfP = idx => rosterOf(P, idx);
+const openOf = idx => P.config.teamSize - rosterOfP(idx).length;
+function maxBidOf(t) { const o = openOf(t.idx); return o <= 0 ? 0 : t.points - P.config.reservePerSlot * (o - 1); }
+const pById = id => P.players.find(p => p.id === id);
+const cur = () => pById(P.current);
 
 function nextPlayer() {
-  const anyOpen = teams.some(t => openSlots(t) > 0);
-  current = anyOpen ? queue.shift() || null : null;
-  bid = { amount: 0, team: null };
-  endAt = null; pausedLeft = null;
-  state = current ? "ready" : "done";
-  if (!current) addLog(queue.length ? `모든 팀이 꽉 찼습니다. 남은 선수 ${queue.length}명.` : "모든 선수의 경매가 끝났습니다.", "sold");
-  render();
-  if (current && document.getElementById("autoNext").checked) startLot();
-}
-
-function startLot() {
-  if (state === "ready") {
-    state = "running";
-    endAt = performance.now() + CONFIG.startSeconds * 1000;
-    addLog(`${current.name} 경매 시작 (${CONFIG.startSeconds}초)`);
-  } else if (state === "paused") {
-    state = "running";
-    endAt = performance.now() + pausedLeft;
-    pausedLeft = null;
-  } else return;
-  render();
-  requestAnimationFrame(tick);
-}
-
-function pauseLot() {
-  if (state !== "running") return;
-  pausedLeft = Math.max(0, endAt - performance.now());
-  state = "paused";
+  const anyOpen = P.teams.some(t => openOf(t.idx) > 0);
+  if (!anyOpen || !P.queue.length) {
+    P.status = "done"; P.current = null; P.bid_amount = 0; P.bid_team = null;
+    log(P.queue.length ? `모든 팀이 꽉 찼습니다. 남은 선수 ${P.queue.length}명.` : "모든 선수의 경매가 끝났습니다.", "sold");
+    return render();
+  }
+  P.current = P.queue.shift(); P.bid_amount = 0; P.bid_team = null; P.next_at = null; P.paused_left_ms = null;
+  if (P.auto_start) { P.status = "running"; P.ends_at = Date.now() + P.config.startSeconds * 1000; log(`${cur().name} 경매 시작 (${P.config.startSeconds}초)`); }
+  else { P.status = "ready"; P.ends_at = null; }
   render();
 }
 
-function timeLeft() {
-  if (state === "running") return Math.max(0, endAt - performance.now());
-  if (state === "paused") return pausedLeft;
-  if (state === "ready") return CONFIG.startSeconds * 1000;
-  return 0;
-}
-
-function tick() {
-  if (state !== "running") return;
-  if (endAt - performance.now() <= 0) { finishLot(); return; }
-  renderTimer();
-  requestAnimationFrame(tick);
-}
-
-// 이 팀이 이 금액으로 입찰할 수 있는가? 안 되면 이유를 돌려줌
-function bidBlockReason(team, amount) {
-  if (state !== "running") return "경매 진행 중이 아님";
-  if (openSlots(team) <= 0) return "팀 인원이 꽉 참";
-  if (bid.team === team.id) return "현재 최고가 팀";
-  if (amount > team.points) return "포인트 부족";
-  if (amount > maxBid(team)) return `빈자리 ${openSlots(team) - 1}칸 몫 ${CONFIG.reservePerSlot * (openSlots(team) - 1)}P는 남겨야 함`;
-  return null;
-}
-
-function placeBid(teamId, amount) {
-  const team = teams[teamId];
-  if (amount < bid.amount + CONFIG.bidStep) return toast(`최소 ${bid.amount + CONFIG.bidStep}포인트 이상 입찰해야 합니다.`);
-  if (amount % CONFIG.bidStep !== 0) return toast(`입찰은 ${CONFIG.bidStep}포인트 단위로만 가능합니다.`);
-  const why = bidBlockReason(team, amount);
-  if (why) return toast(`${team.name}: ${why}`);
-
-  const now = performance.now();
-  const before = Math.max(0, endAt - now);
-  const after = Math.min(before + CONFIG.bidAddSeconds * 1000, CONFIG.maxSeconds * 1000);
-  endAt = now + after;
-  bid = { amount, team: team.id };
-  addLog(`${team.name} ${amount}P 입찰 · 시간 ${(before / 1000).toFixed(1)}초 → ${(after / 1000).toFixed(1)}초`, "bid");
-
+function startOrResume() {
+  if (P.status === "ready") { P.status = "running"; P.ends_at = Date.now() + P.config.startSeconds * 1000; log(`${cur().name} 경매 시작 (${P.config.startSeconds}초)`); }
+  else if (P.status === "paused") { P.status = "running"; P.ends_at = Date.now() + P.paused_left_ms; P.paused_left_ms = null; log("다시 진행"); }
   render();
-  bumpEl(document.getElementById("bidAmount"), "bump");
-  const plus = document.getElementById("timerPlus");
-  plus.textContent = `+${((after - before) / 1000).toFixed(1)}`;
-  bumpEl(plus, "show");
-  bumpEl(document.querySelector(`.team[data-id="${team.id}"]`), "pulse");
+}
+function pause() {
+  if (P.status !== "running") return;
+  P.paused_left_ms = Math.max(0, P.ends_at - Date.now()); P.status = "paused"; P.ends_at = null; log("일시정지"); render();
+}
+
+// 입찰 판정 (온라인 서버와 같은 순서·같은 문구)
+function placeBid(idx, amount) {
+  const t = P.teams[idx], c = P.config, open = openOf(idx), reserve = c.reservePerSlot * Math.max(open - 1, 0);
+  let why = null;
+  if (P.status !== "running") why = "경매 진행 중이 아니에요.";
+  else if (Date.now() >= P.ends_at) why = "시간이 끝났어요.";
+  else if (P.bid_team === idx) why = "이미 우리 팀이 최고가예요.";
+  else if (!Number.isInteger(amount) || amount < P.bid_amount + c.bidStep) why = `최소 ${P.bid_amount + c.bidStep}P부터 입찰할 수 있어요.`;
+  else if (amount % c.bidStep !== 0) why = `${c.bidStep}P 단위로만 입찰할 수 있어요.`;
+  else if (open <= 0) why = "팀 인원이 꽉 찼어요.";
+  else if (amount > t.points) why = "포인트가 부족해요.";
+  else if (amount > t.points - reserve) why = `빈자리 ${open - 1}칸 몫 ${reserve}P는 남겨야 해요.`;
+  if (why) { toast(`${t.name}: ${why}`); return; }
+  const now = Date.now(), before = Math.max(0, P.ends_at - now);
+  const after = Math.min(before + c.bidAddSeconds * 1000, c.maxSeconds * 1000);
+  P.ends_at = now + after; P.bid_amount = amount; P.bid_team = idx;
+  log(`${t.name} ${amount}P 입찰 · 시간 ${(before / 1000).toFixed(1)}초 → ${(after / 1000).toFixed(1)}초`, "bid");
+  render();
+  bumpEl($("bidAmount"), "bump");
+  const plus = $("timerPlus"); plus.textContent = `+${((after - before) / 1000).toFixed(1)}`; bumpEl(plus, "show");
+  bumpEl(document.querySelector(`.team[data-id="${idx}"]`), "pulse");
 }
 
 function finishLot() {
-  if (state !== "running" && state !== "paused") return;
-  state = "result";
-  const p = current;
-  if (bid.team !== null) {
-    const team = teams[bid.team];
-    team.points -= bid.amount;
-    team.roster.push({ player: p, price: bid.amount });
-    addLog(`낙찰! ${p.name} → ${team.name} (${bid.amount}P)`, "sold");
-    flash("낙찰!", `<em>${esc(team.name)}</em> · ${esc(p.name)} · ${bid.amount}P`, team.color, p);
-    render(team.id);
+  if (P.status !== "running" && P.status !== "paused") return;
+  const p = cur();
+  if (P.bid_team !== null) {
+    const t = P.teams[P.bid_team];
+    t.points -= P.bid_amount; p.team = t.idx; p.price = P.bid_amount; p.how = "bid";
+    log(`낙찰! ${p.name} → ${t.name} (${P.bid_amount}P)`, "sold");
+    P.last_result = { kind: "sold", player: p.id, team: t.idx, price: P.bid_amount, seq: ++lastSeq };
   } else {
     p.unsold++;
-    if (p.unsold >= CONFIG.maxUnsold) {
-      const open = teams.filter(t => openSlots(t) > 0);
-      const team = open[Math.floor(Math.random() * open.length)];
-      team.roster.push({ player: p, price: 0, random: true });
-      addLog(`${p.name} ${p.unsold}번째 유찰 → ${team.name}에 무작위 배정 (0P)`, "unsold");
-      flash("무작위 배정", `${esc(p.name)} → <em>${esc(team.name)}</em>`, team.color, p);
-      render(team.id);
+    if (p.unsold >= P.config.maxUnsold) {
+      const open = P.teams.filter(t => openOf(t.idx) > 0);
+      if (open.length) {
+        const t = open[Math.floor(Math.random() * open.length)];
+        p.team = t.idx; p.price = 0; p.how = "random";
+        log(`${p.name} ${p.unsold}번째 유찰 → ${t.name}에 무작위 배정 (0P)`, "unsold");
+        P.last_result = { kind: "random", player: p.id, team: t.idx, seq: ++lastSeq };
+      } else { log(`${p.name} 유찰 — 빈자리가 있는 팀이 없어요`, "unsold"); P.last_result = { kind: "unsold", player: p.id, seq: ++lastSeq }; }
     } else {
-      queue.push(p);
-      addLog(`유찰 — ${p.name} 순서 맨 뒤로 (${p.unsold}번째 유찰)`, "unsold");
-      flash("유찰", `${esc(p.name)} · 순서 맨 뒤로`, "#8a93ab", p);
-      render();
+      P.queue.push(p.id);
+      log(`유찰 — ${p.name} 순서 맨 뒤로 (${p.unsold}번째 유찰)`, "unsold");
+      P.last_result = { kind: "unsold", player: p.id, seq: ++lastSeq };
     }
   }
-  nextTimer = setTimeout(nextPlayer, CONFIG.resultShowMs);
+  P.status = "result"; P.ends_at = null; P.paused_left_ms = null; P.next_at = Date.now() + P.config.resultShowMs;
+  flashResult(P); render();
 }
 
-/* =====================================================================
-   [6] 경매 순서 뽑기
-   ===================================================================== */
-let drawOrder = [], drawIndex = 0, drawTimer = null;
+// 시간 확인 (온라인의 tick 과 같은 일)
+setInterval(() => {
+  if (!P) return;
+  if (P.status === "running" && Date.now() >= P.ends_at) finishLot();
+  else if (P.status === "result" && Date.now() >= P.next_at) nextPlayer();
+}, 100);
 
+/* ---------- 순서: 무작위 추첨 / 직접 정하기 ---------- */
+let drawOrder = [], drawIndex = 0, drawTimer = null;
+function canOrder() {
+  if (P.status !== "setup") { toast("준비 단계에서만 순서를 정할 수 있어요."); return false; }
+  if (!P.teams.length) { toast("팀장을 1명 이상 정해 주세요. (선수 관리에서 ‘팀장’ 체크)"); return false; }
+  if (!P.queue.length) { toast("경매에 올릴 선수가 없어요."); return false; }
+  return true;
+}
 function startDraw() {
-  if (state !== "setup") return;
-  if (teams.length !== CONFIG.teamCount) {
-    toast(`팀장이 ${CONFIG.teamCount}명이어야 합니다. 지금 ${teams.length}명이에요. ‘선수 관리’에서 고쳐 주세요.`);
-    return;
-  }
-  // 섞기 (피셔-예이츠 방식: 모든 순서가 똑같은 확률로 나옴)
-  drawOrder = [...queue];
-  for (let i = drawOrder.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [drawOrder[i], drawOrder[j]] = [drawOrder[j], drawOrder[i]];
-  }
+  if (!canOrder()) return;
+  drawOrder = [...P.queue];
+  for (let i = drawOrder.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [drawOrder[i], drawOrder[j]] = [drawOrder[j], drawOrder[i]]; }
   drawIndex = 0;
-  state = "draw";
-  document.getElementById("orderList").innerHTML = "";
-  document.getElementById("btnDrawDone").disabled = true;
-  document.getElementById("btnSkipDraw").disabled = false;
-  document.getElementById("drawOverlay").classList.add("show");
-  render();
+  $("orderList").innerHTML = ""; $("btnDrawDone").disabled = true; $("btnSkipDraw").disabled = false;
+  $("drawOverlay").classList.add("show");
   stepDraw();
 }
-
 function showRoulette(p, locked, no) {
-  const r = document.getElementById("roulette");
-  r.classList.toggle("locked", locked);
-  document.getElementById("rNo").textContent = `${no}번`;
-  document.getElementById("rPhoto").innerHTML = avatar(p, 150);
-  document.getElementById("rName").textContent = p.name;
-  document.getElementById("rSub").textContent = locked ? `${p.pos} · ${p.peak} / ${p.current}` : "";
+  $("roulette").classList.toggle("locked", locked);
+  $("rNo").textContent = `${no}번`; $("rPhoto").innerHTML = avatar(p, 150); $("rName").textContent = p.name;
+  $("rSub").textContent = locked ? `${p.pos} · ${p.peak} / ${p.current}` : "";
 }
-
-function appendOrder(i, p) {
-  const li = document.createElement("li");
+function appendOrder(i, id) {
+  const p = pById(id), li = document.createElement("li");
   li.innerHTML = `<b>${i + 1}</b>${avatar(p, 32)}<span>${esc(p.name)}</span>`;
-  document.getElementById("orderList").appendChild(li);
+  $("orderList").appendChild(li);
 }
-
 function stepDraw() {
   if (drawIndex >= drawOrder.length) return finishDraw();
   const remaining = drawOrder.slice(drawIndex);
-  let spins = 0;
-  const totalSpins = remaining.length > 1 ? 7 : 0;
+  let spins = 0; const total = remaining.length > 1 ? 7 : 0;
   const spin = () => {
-    if (spins < totalSpins) {
-      showRoulette(remaining[Math.floor(Math.random() * remaining.length)], false, drawIndex + 1);
-      spins++;
-      drawTimer = setTimeout(spin, 35 + spins * 12);
-    } else {
-      showRoulette(drawOrder[drawIndex], true, drawIndex + 1);
-      appendOrder(drawIndex, drawOrder[drawIndex]);
-      drawIndex++;
-      drawTimer = setTimeout(stepDraw, 380);
-    }
+    if (spins < total) { showRoulette(pById(remaining[Math.floor(Math.random() * remaining.length)]), false, drawIndex + 1); spins++; drawTimer = setTimeout(spin, 35 + spins * 12); }
+    else { showRoulette(pById(drawOrder[drawIndex]), true, drawIndex + 1); appendOrder(drawIndex, drawOrder[drawIndex]); drawIndex++; drawTimer = setTimeout(stepDraw, 380); }
   };
   spin();
 }
+function skipDraw() { clearTimeout(drawTimer); while (drawIndex < drawOrder.length) { appendOrder(drawIndex, drawOrder[drawIndex]); drawIndex++; } finishDraw(); }
+function finishDraw() { clearTimeout(drawTimer); $("rNo").textContent = "추첨 완료"; $("btnSkipDraw").disabled = true; $("btnDrawDone").disabled = false; }
+function stopDraw() { clearTimeout(drawTimer); $("drawOverlay").classList.remove("show"); }
+function confirmOrder(ids) { P.queue = [...ids]; log(`경매 순서 확정 — 1번 ${pById(ids[0]).name}`); nextPlayer(); }
+$("btnDraw").onclick = startDraw;
+$("btnSkipDraw").onclick = skipDraw;
+$("btnDrawDone").onclick = () => { $("drawOverlay").classList.remove("show"); confirmOrder(drawOrder); };
 
-function skipDraw() {
-  clearTimeout(drawTimer);
-  while (drawIndex < drawOrder.length) { appendOrder(drawIndex, drawOrder[drawIndex]); drawIndex++; }
-  finishDraw();
+let manualOrder = [];
+function renderOrder() {
+  $("orderEdit").innerHTML = manualOrder.map((id, i) => { const p = pById(id);
+    return `<li data-i="${i}"><span class="no">${i + 1}</span>${avatar(p, 26)}<span class="nm">${esc(p.name)} <span style="color:var(--muted);font-size:12px">${esc(p.pos)} · ${playerScore(p).toFixed(1)}</span></span>
+      <button data-mv="-1" ${i === 0 ? "disabled" : ""}>▲</button><button data-mv="1" ${i === manualOrder.length - 1 ? "disabled" : ""}>▼</button></li>`; }).join("");
 }
+$("btnOrder").onclick = () => { if (!canOrder()) return; manualOrder = [...P.queue]; renderOrder(); $("orderOverlay").classList.add("show"); };
+$("orderEdit").onclick = e => { const b = e.target.closest("[data-mv]"); if (!b) return; const i = Number(b.closest("[data-i]").dataset.i), j = i + Number(b.dataset.mv); [manualOrder[i], manualOrder[j]] = [manualOrder[j], manualOrder[i]]; renderOrder(); };
+$("btnOrderShuffle").onclick = () => { for (let i = manualOrder.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [manualOrder[i], manualOrder[j]] = [manualOrder[j], manualOrder[i]]; } renderOrder(); };
+$("btnOrderSave").onclick = () => { $("orderOverlay").classList.remove("show"); confirmOrder(manualOrder); };
+$("btnOrderClose").onclick = () => $("orderOverlay").classList.remove("show");
 
-function finishDraw() {
-  clearTimeout(drawTimer);
-  document.getElementById("rNo").textContent = "추첨 완료";
-  document.getElementById("btnSkipDraw").disabled = true;
-  document.getElementById("btnDrawDone").disabled = false;
+/* ---------- 경매 설정 (온라인 운영자 콘솔 ‘경매 준비’와 같은 항목) ---------- */
+let cfTiers = {};
+function openSettings() {
+  const c = P.config, setup = P.status === "setup";
+  $("cfStart").value = c.startPoints; $("cfStep").value = c.bidStep; $("cfSize").value = c.teamSize; $("cfReserve").value = c.reservePerSlot;
+  ["cfStart", "cfStep", "cfSize", "cfReserve"].forEach(id => ($(id).disabled = !setup));
+  $("settingsNote").textContent = setup ? "경매 시작 전이라 모두 바꿀 수 있어요. 이 브라우저에 저장돼요."
+    : "경매가 시작돼서 시작 포인트·입찰 단위·팀 인원·핸디캡은 잠겨 있어요. 점수표와 비율은 지금도 바꿀 수 있어요.";
+  $("cfHandicaps").innerHTML = P.teams.length ? P.teams.map(t => `<label style="color:${esc(t.color)}">${esc(t.name)}<input type="number" min="0" step="${c.bidStep}" data-team="${t.idx}" value="${t.handicap}" ${setup ? "" : "disabled"}></label>`).join("")
+    : `<div style="color:var(--muted)">팀장이 아직 없어요. 선수 관리에서 ‘팀장’을 체크하세요.</div>`;
+  cfTiers = { ...TIER_SCORE, ...(c.tierScores || {}) };
+  $("cfWeight").value = Math.round(peakWeight(c) * 100);
+  $("cfTiers").innerHTML = Object.keys(TIER_SCORE).map(t => `<label>${t}<input type="number" step="0.5" min="0" max="1000" data-tier="${t}" value="${cfTiers[t]}"></label>`).join("");
+  updateWeight();
+  $("settingsOverlay").classList.add("show");
 }
-
-function confirmDraw() {
-  if (state !== "draw") return;
-  document.getElementById("drawOverlay").classList.remove("show");
-  queue = drawOrder;
-  addLog(`경매 순서 추첨 완료 — 1번 ${queue[0] ? queue[0].name : "-"}`);
-  nextPlayer();
+function updateWeight() {
+  const w = Number($("cfWeight").value) / 100;
+  $("cfWeightLabel").textContent = `${Math.round(w * 100)}% (현재 티어 ${Math.round((1 - w) * 100)}%)`;
+  $("cfExample").textContent = `예: 최고 불멸 3 / 현재 초월자 2 → ${scoreFormula({ peak: "불멸 3", current: "초월자 2" }, { tierScores: cfTiers, peakWeight: w })}점`;
 }
+$("cfWeight").oninput = updateWeight;
+$("cfTiers").oninput = e => { if (e.target.dataset.tier) { cfTiers[e.target.dataset.tier] = Number(e.target.value); updateWeight(); } };
+$("btnTierDefault").onclick = () => { cfTiers = { ...TIER_SCORE }; [...$("cfTiers").querySelectorAll("input")].forEach(i => (i.value = cfTiers[i.dataset.tier])); updateWeight(); };
+$("btnSettingsSave").onclick = () => {
+  const c = P.config, setup = P.status === "setup";
+  for (const t of Object.keys(TIER_SCORE)) if (!(cfTiers[t] >= 0 && cfTiers[t] <= 1000)) return toast(`${t} 점수를 0에서 1000 사이로 적어 주세요.`);
+  const next = { ...c, tierScores: { ...cfTiers }, peakWeight: Number($("cfWeight").value) / 100 };
+  if (setup) {
+    const v = { startPoints: +$("cfStart").value, bidStep: +$("cfStep").value, teamSize: +$("cfSize").value, reservePerSlot: +$("cfReserve").value };
+    if (!Object.values(v).every(Number.isInteger)) return toast("시작 포인트·입찰 단위·팀 인원·빈자리 몫은 정수로 적어 주세요.");
+    if (v.startPoints < 10 || v.bidStep < 1 || v.teamSize < 1 || v.teamSize > 12 || v.reservePerSlot < 0) return toast("값이 범위를 벗어났어요.");
+    const hcs = [...$("cfHandicaps").querySelectorAll("[data-team]")].map(i => Math.max(0, Math.floor(+i.value || 0)));
+    if (hcs.some(h => h >= v.startPoints)) return toast("핸디캡은 시작 포인트보다 작아야 해요.");
+    Object.assign(next, v);
+    next.handicaps = { ...(c.handicaps || {}) };
+    P.teams.forEach((t, i) => { t.handicap = hcs[i]; t.points = v.startPoints - hcs[i]; next.handicaps[rosterOfP(t.idx)[0].name] = hcs[i]; });
+  }
+  P.config = next; setScoreConfig(next); saveCfg(next);
+  log("경매 설정을 바꿨습니다.");
+  $("settingsOverlay").classList.remove("show");
+  buildTeams(); render(); toast("경매 설정을 저장했어요.");
+};
+$("btnSettings").onclick = openSettings; $("btnSettings2").onclick = openSettings;
+$("btnSettingsClose").onclick = () => $("settingsOverlay").classList.remove("show");
 
-function stopDraw() {
-  clearTimeout(drawTimer);
-  document.getElementById("drawOverlay").classList.remove("show");
-}
-
-/* =====================================================================
-   [7] 선수 관리 (사진, 각오 한마디, 티어, 포지션, 팀장)
-   ===================================================================== */
+/* ---------- 선수 관리: 팀장(1~8명), 티어, 점수 직접 입력, 사진, 각오 ---------- */
 let draft = [];
-
 function openEditor() {
-  if (state !== "setup") return toast("경매 중에는 고칠 수 없어요. ‘처음부터 다시’를 누른 뒤 고쳐 주세요.");
-  draft = profiles.map(p => ({ ...p }));
-  buildEditor();
-  document.getElementById("editOverlay").classList.add("show");
+  if (P.status !== "setup") return toast("경매 중에는 고칠 수 없어요. ‘처음부터 다시’를 누른 뒤 고쳐 주세요.");
+  draft = profiles.map(p => ({ ...p })); buildEditor(); $("editOverlay").classList.add("show");
 }
-
-function closeEditor() { document.getElementById("editOverlay").classList.remove("show"); }
-
-function tierOptions(selected) {
-  return Object.keys(TIER_SCORE).map(t => `<option ${t === selected ? "selected" : ""}>${t}</option>`).join("");
-}
-
+const tierOptions = sel => Object.keys(TIER_SCORE).map(t => `<option ${t === sel ? "selected" : ""}>${t}</option>`).join("");
 function buildEditor() {
-  const grid = document.getElementById("edGrid");
-  grid.innerHTML = draft.map((p, i) => `
+  $("edGrid").innerHTML = draft.map((p, i) => `
     <div class="ed ${p.captain ? "captain" : ""}" data-i="${i}">
-      <div class="ed-photo">
-        <label>${avatar(p, 84)}<input type="file" accept="image/*"></label>
-        <button type="button" data-act="clearPhoto">사진 지우기</button>
-      </div>
+      <div class="ed-photo"><label>${avatar(p, 84)}<input type="file" accept="image/*"></label><button type="button" data-act="clearPhoto">사진 지우기</button><button type="button" data-act="remove">선수 빼기</button></div>
       <div class="ed-fields">
         <input data-f="name" maxlength="16" value="${esc(p.name)}" placeholder="닉네임">
         <div class="row2">
@@ -725,256 +424,189 @@ function buildEditor() {
           <select data-f="pos">${POSITIONS.map(x => `<option ${x === p.pos ? "selected" : ""}>${x}</option>`).join("")}</select>
           <label class="ed-cap"><input type="checkbox" data-f="captain" ${p.captain ? "checked" : ""}> 팀장</label>
         </div>
+        <div class="row2">
+          <div><small>점수 직접 입력 (비우면 자동)</small><input class="score-in" data-f="score" type="number" step="0.1" min="0" max="1000" placeholder="${autoScore(p).toFixed(1)}" value="${p.score ?? ""}"></div>
+          <div><small>자동 점수</small><div class="calc" data-auto>${scoreFormula(p)}</div></div>
+        </div>
         <input data-f="motto" maxlength="${CONFIG.mottoMaxLength}" value="${esc(p.motto || "")}" placeholder="각오 한마디 (${CONFIG.mottoMaxLength}자까지)">
       </div>
     </div>`).join("");
   updateCapCount();
 }
-
 function updateCapCount() {
-  const n = draft.filter(p => p.captain).length;
-  const el = document.getElementById("capCount");
-  el.textContent = `팀장 ${n} / ${CONFIG.teamCount}명 · 전체 ${draft.length}명`;
-  el.className = "cap-count " + (n === CONFIG.teamCount ? "good" : "bad");
+  const n = draft.filter(p => p.captain).length, el = $("capCount");
+  el.textContent = `팀장 ${n}명 (= 팀 ${n}개, 최대 8) · 전체 ${draft.length}명`;
+  el.className = "cap-count " + (n >= 1 && n <= 8 ? "good" : "bad");
 }
-
-document.getElementById("edGrid").addEventListener("input", e => {
+$("edGrid").addEventListener("input", e => {
   const card = e.target.closest(".ed"); if (!card) return;
-  const p = draft[card.dataset.i];
-  const f = e.target.dataset.f;
+  const p = draft[card.dataset.i], f = e.target.dataset.f;
   if (f === "captain") { p.captain = e.target.checked; card.classList.toggle("captain", p.captain); updateCapCount(); }
+  else if (f === "score") p.score = e.target.value === "" ? null : Number(e.target.value);
   else if (f) p[f] = e.target.value;
+  if (f === "peak" || f === "current") { card.querySelector("[data-auto]").textContent = scoreFormula(p); card.querySelector('[data-f="score"]').placeholder = autoScore(p).toFixed(1); }
 });
-document.getElementById("edGrid").addEventListener("change", e => {
+$("edGrid").addEventListener("change", e => {
   if (e.target.type !== "file" || !e.target.files[0]) return;
-  const card = e.target.closest(".ed");
-  const p = draft[card.dataset.i];
-  resizePhoto(e.target.files[0]).then(url => {
-    p.photo = url;
-    card.querySelector(".ed-photo label").innerHTML = `${avatar(p, 84)}<input type="file" accept="image/*">`;
-  }).catch(() => toast("사진을 읽지 못했어요. 다른 사진으로 해 보세요."));
+  const card = e.target.closest(".ed"), p = draft[card.dataset.i];
+  resizePhoto(e.target.files[0]).then(url => { p.photo = url; card.querySelector(".ed-photo label").innerHTML = `${avatar(p, 84)}<input type="file" accept="image/*">`; })
+    .catch(() => toast("사진을 읽지 못했어요."));
 });
-document.getElementById("edGrid").addEventListener("click", e => {
-  if (e.target.dataset.act !== "clearPhoto") return;
-  const card = e.target.closest(".ed");
-  const p = draft[card.dataset.i];
-  p.photo = "";
-  card.querySelector(".ed-photo label").innerHTML = `${avatar(p, 84)}<input type="file" accept="image/*">`;
+$("edGrid").addEventListener("click", e => {
+  const card = e.target.closest(".ed"); if (!card) return;
+  if (e.target.dataset.act === "clearPhoto") { const p = draft[card.dataset.i]; p.photo = ""; card.querySelector(".ed-photo label").innerHTML = `${avatar(p, 84)}<input type="file" accept="image/*">`; }
+  if (e.target.dataset.act === "remove") { draft.splice(Number(card.dataset.i), 1); buildEditor(); }
 });
-
-// 사진을 가운데 기준 정사각형으로 잘라 작게 줄임 (저장 공간 절약)
 function resizePhoto(file) {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
+    const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
-      const s = CONFIG.photoSize, side = Math.min(img.width, img.height);
-      const c = document.createElement("canvas"); c.width = c.height = s;
+      const s = CONFIG.photoSize, side = Math.min(img.width, img.height), c = document.createElement("canvas"); c.width = c.height = s;
       c.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, s, s);
-      URL.revokeObjectURL(url);
-      resolve(c.toDataURL("image/jpeg", 0.82));
+      URL.revokeObjectURL(url); resolve(c.toDataURL("image/jpeg", 0.82));
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(); };
     img.src = url;
   });
 }
-
-function saveEditor() {
-  const names = draft.map(p => p.name.trim());
+$("btnEdAdd").onclick = () => { draft.push({ name: `새 선수 ${draft.length + 1}`, peak: "골드 1", current: "골드 1", pos: "타격대", captain: false, motto: "", photo: "", score: null }); buildEditor(); $("edGrid").lastElementChild.scrollIntoView(); };
+$("btnEdDefault").onclick = () => { if (confirm("가짜 선수 25명 기본값으로 되돌릴까요? (저장을 눌러야 반영돼요)")) { draft = seedProfiles(); buildEditor(); } };
+$("btnEdCancel").onclick = () => $("editOverlay").classList.remove("show");
+$("btnEdSave").onclick = () => {
+  const names = draft.map(p => (p.name || "").trim());
   if (names.some(n => !n)) return toast("닉네임이 비어 있는 선수가 있어요.");
   if (new Set(names).size !== names.length) return toast("같은 닉네임이 두 번 있어요.");
   const caps = draft.filter(p => p.captain).length;
-  if (caps !== CONFIG.teamCount) return toast(`팀장은 ${CONFIG.teamCount}명이어야 해요. 지금 ${caps}명입니다.`);
-  draft.forEach(p => { p.name = p.name.trim(); p.motto = (p.motto || "").trim(); });
-  if (!saveProfiles(draft)) return;
-  closeEditor();
-  init();
-  addLog("선수 정보를 저장했습니다.");
-}
+  if (caps < 1 || caps > 8) return toast("팀장은 1명에서 8명 사이로 정해 주세요.");
+  if (draft.some(p => p.score != null && !(p.score >= 0 && p.score <= 1000))) return toast("점수는 0에서 1000 사이로 적어 주세요.");
+  if (!saveProfiles(draft.map(({ id, ...p }) => ({ ...p, name: p.name.trim(), motto: (p.motto || "").trim() })))) return;
+  $("editOverlay").classList.remove("show");
+  init(); toast("선수 정보를 저장했어요.");
+};
+$("btnEdit").onclick = openEditor; $("btnEdit2").onclick = openEditor;
 
-/* =====================================================================
-   [8] 화면 그리기
-   ===================================================================== */
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-
-function avatar(p, size) {
-  if (p.photo && p.photo.startsWith("data:image/")) {
-    return `<img class="av" src="${esc(p.photo)}" alt="" style="width:${size}px;height:${size}px">`;
-  }
-  return `<span class="av ph" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.45)}px">${esc([...p.name][0] || "?")}</span>`;
-}
-
+/* ---------- 화면 그리기 (온라인 진행자 화면과 같은 모양 + 팀별 입찰 버튼) ---------- */
 function buildTeams() {
-  const wrap = document.getElementById("teams");
-  wrap.innerHTML = "";
-  for (const t of teams) {
+  const wrap = $("teams"); wrap.innerHTML = "";
+  for (const t of P.teams) {
     const el = document.createElement("div");
-    el.className = "team";
-    el.dataset.id = t.id;
-    el.style.setProperty("--c", t.color);
+    el.className = "team"; el.dataset.id = t.idx; el.style.setProperty("--c", t.color);
     el.innerHTML = `
-      <div class="team-head"><div class="team-name">${avatar(t.roster[0].player, 30)}<span>${esc(t.name)}</span></div><div class="team-slots">빈자리 <b data-k="slots"></b></div></div>
+      <div class="team-head"><div class="team-name"><span>${esc(t.name)}</span></div><div class="team-slots">빈자리 <b data-k="slots"></b></div></div>
       <div class="team-points" data-k="points"></div>
       <div class="team-max" data-k="max"></div>
-      <div class="team-score">
-        <div><small>티어 점수 합계</small><b data-k="sum"></b></div>
-        <div><small>티어 점수 평균</small><b data-k="avg"></b></div>
-      </div>
+      <div class="team-score"><div><small>티어 점수 합계</small><b data-k="sum"></b></div><div><small>티어 점수 평균</small><b data-k="avg"></b></div></div>
       <ul class="roster" data-k="roster"></ul>
       <div class="bids">
-        ${CONFIG.quickBids.map(q => `<button class="q" data-q="${q}">+${q}</button>`).join("")}
-        <div class="direct"><input type="number" inputmode="numeric" step="${CONFIG.bidStep}" placeholder="직접 입력"><button data-direct>입찰</button></div>
+        ${CONFIG.quickBids.map(m => `<button class="q" data-q="${m}">+${m * P.config.bidStep}</button>`).join("")}
+        <div class="direct"><input type="number" inputmode="numeric" placeholder="직접 입력"><button data-direct>입찰</button></div>
       </div>
       <div class="why" data-k="why"></div>`;
-    el.querySelectorAll("[data-q]").forEach(b =>
-      b.addEventListener("click", () => placeBid(t.id, bid.amount + Number(b.dataset.q))));
+    el.querySelectorAll("[data-q]").forEach(b => b.onclick = () => placeBid(t.idx, P.bid_amount + Number(b.dataset.q) * P.config.bidStep));
     const input = el.querySelector("input");
-    const submit = () => { const v = Number(input.value); if (!v) return; placeBid(t.id, v); input.value = ""; };
-    el.querySelector("[data-direct]").addEventListener("click", submit);
-    input.addEventListener("keydown", e => { if (e.key === "Enter") submit(); });
+    const submit = () => { const v = Number(input.value); if (!v) return; input.value = ""; placeBid(t.idx, v); };
+    el.querySelector("[data-direct]").onclick = submit;
+    input.onkeydown = e => { if (e.key === "Enter") submit(); };
     wrap.appendChild(el);
   }
 }
 
-function render(changedTeamId = null) {
-  const setup = state === "setup" || state === "draw";
-  document.getElementById("setupBox").style.display = setup ? "" : "none";
-  document.getElementById("lotLeft").style.display = setup ? "none" : "";
-  document.getElementById("lotRight").style.display = setup ? "none" : "";
+function blockReason(t, amount) {
+  const open = openOf(t.idx), c = P.config;
+  if (P.status !== "running") return "경매 진행 중이 아님";
+  if (open <= 0) return "팀 인원이 꽉 참";
+  if (P.bid_team === t.idx) return "현재 최고가 팀";
+  if (amount > t.points) return "포인트 부족";
+  if (amount > maxBidOf(t)) return `빈자리 ${open - 1}칸 몫 ${c.reservePerSlot * (open - 1)}P는 남겨야 함`;
+  return null;
+}
 
-  // 선수 카드
-  const p = current;
-  document.getElementById("pPhoto").innerHTML = p ? avatar(p, 130) : "";
-  document.getElementById("pName").textContent = p ? p.name : "경매 종료";
-  document.getElementById("pPos").textContent = p ? p.pos : "-";
-  document.getElementById("pMotto").textContent = p && p.motto ? `“${p.motto}”` : "";
-  document.getElementById("pPeak").innerHTML = p ? `${esc(p.peak)} <em>${TIER_SCORE[p.peak]}점</em>` : "-";
-  document.getElementById("pCur").innerHTML = p ? `${esc(p.current)} <em>${TIER_SCORE[p.current]}점</em>` : "-";
-  document.getElementById("pScore").textContent = p ? playerScore(p).toFixed(1) : "-";
-  document.getElementById("pUnsold").textContent = p && p.unsold
-    ? `이미 ${p.unsold}번 유찰된 선수 — 이번에도 유찰되면 빈자리 팀에 무작위 배정` : "";
-
-  // 현재 최고가
-  document.getElementById("bidAmount").textContent = bid.amount;
-  const leader = document.getElementById("bidLeader");
-  if (bid.team !== null) { leader.textContent = `${teams[bid.team].name} 최고가`; leader.style.color = teams[bid.team].color; }
+function render() {
+  const s = P, c = s.config, setup = s.status === "setup";
+  $("setupBox").style.display = setup ? "" : "none";
+  $("lotLeft").style.display = setup ? "none" : "";
+  $("lotRight").style.display = setup ? "none" : "";
+  $("setupTitle").textContent = `팀장 ${s.teams.length}명 · 경매 선수 ${s.queue.length}명 · 시작 ${c.startPoints}P · 입찰 단위 ${c.bidStep}P`;
+  const p = s.current !== null ? cur() : null;
+  $("pPhoto").innerHTML = p ? avatar(p, 130) : "";
+  $("pName").textContent = p ? p.name : (s.status === "done" ? "경매 종료" : "-");
+  $("pPos").textContent = p ? p.pos : "-";
+  $("pMotto").textContent = p && p.motto ? `“${p.motto}”` : "";
+  $("pPeak").innerHTML = p ? `${esc(p.peak)} <em>${tierPoints(p.peak)}점</em>` : "-";
+  $("pCur").innerHTML = p ? `${esc(p.current)} <em>${tierPoints(p.current)}점</em>` : "-";
+  $("pScore").textContent = p ? playerScore(p).toFixed(1) : "-";
+  $("pUnsold").textContent = p && p.unsold ? `이미 ${p.unsold}번 유찰된 선수 — 이번에도 유찰되면 빈자리 팀에 무작위 배정` : "";
+  $("bidAmount").textContent = s.bid_amount;
+  const leader = $("bidLeader");
+  if (s.bid_team !== null) { leader.textContent = `${s.teams[s.bid_team].name} 최고가`; leader.style.color = s.teams[s.bid_team].color; }
   else { leader.textContent = "아직 입찰 없음"; leader.style.color = ""; }
-
-  // 상태 문구와 버튼
-  const msg = { setup: "", draw: "", ready: "‘경매 시작’을 누르면 시간이 흐릅니다.", running: `입찰할 때마다 +${CONFIG.bidAddSeconds}초 (최대 ${CONFIG.maxSeconds}초)`, paused: "일시정지 중", result: "결과 발표 중…", done: "경매 완료" };
-  document.getElementById("stateLine").textContent = msg[state];
-  document.getElementById("btnEdit").disabled = state !== "setup";
-  document.getElementById("btnStart").disabled = !(state === "ready" || state === "paused");
-  document.getElementById("btnStart").textContent = state === "paused" ? "다시 진행 (Space)" : "경매 시작 (Space)";
-  document.getElementById("btnPause").disabled = state !== "running";
-  document.getElementById("btnHammer").disabled = !(state === "running" || state === "paused");
-  const filled = teams.reduce((a, t) => a + t.roster.length, 0);
-  document.getElementById("progress").textContent = `자리 ${filled} / ${teams.length * CONFIG.teamSize}`;
-
-  // 대기 순서 (추첨 전에는 순서 없이 이름만)
-  document.getElementById("queue").innerHTML = queue.length
+  const msg = { setup: "", ready: "‘경매 시작’을 누르면 시간이 흐릅니다.", running: `입찰할 때마다 +${c.bidAddSeconds}초 (최대 ${c.maxSeconds}초)`, paused: "일시정지 중", result: "결과 발표 중…", done: "경매 완료" };
+  $("stateLine").textContent = msg[s.status] || "";
+  $("btnEdit").disabled = !setup;
+  $("btnStart").disabled = !(s.status === "ready" || s.status === "paused");
+  $("btnStart").textContent = s.status === "paused" ? "다시 진행 (Space)" : "경매 시작 (Space)";
+  $("btnPause").disabled = s.status !== "running";
+  $("btnHammer").disabled = !(s.status === "running" || s.status === "paused");
+  $("btnNext").disabled = s.status !== "result";
+  $("progress").textContent = `자리 ${s.players.filter(x => x.team !== null).length} / ${s.teams.length * c.teamSize}`;
+  const queue = s.queue.map(pById);
+  $("queue").innerHTML = queue.length
     ? queue.map((q, i) => `<li><span class="n">${setup ? "·" : i + 1}</span>${avatar(q, 24)}<span class="nm">${esc(q.name)}</span>${q.unsold ? `<span class="tag-unsold">유찰 ${q.unsold}</span>` : ""}<span>${playerScore(q).toFixed(1)}</span></li>`).join("")
     : `<li><span class="nm" style="color:var(--muted)">대기 선수 없음</span></li>`;
-
-  // 팀
-  for (const t of teams) {
-    const el = document.querySelector(`.team[data-id="${t.id}"]`);
-    const { sum, avg } = teamScore(t);
-    const open = openSlots(t);
-    el.querySelector('[data-k="slots"]').textContent = `${open} / ${CONFIG.teamSize}`;
-    el.querySelector('[data-k="points"]').innerHTML = `${t.points}<small>P 남음</small>`;
-    el.querySelector('[data-k="max"]').innerHTML = open > 0
-      ? `최대 입찰 가능 <b>${maxBid(t)}P</b>${open > 1 ? ` · 빈자리 몫 ${CONFIG.reservePerSlot * (open - 1)}P 보관` : ""}`
-      : "팀 완성";
+  $("log").innerHTML = eventsHtml(s.events);
+  for (const t of s.teams) {
+    const el = document.querySelector(`.team[data-id="${t.idx}"]`); if (!el) continue;
+    const roster = rosterOfP(t.idx), { sum, avg } = teamScore(roster), open = c.teamSize - roster.length;
+    el.querySelector('[data-k="slots"]').textContent = `${open} / ${c.teamSize}`;
+    const pts = el.querySelector('[data-k="points"]'), old = pts.dataset.v;
+    pts.innerHTML = `${t.points}<small>P 남음${t.handicap ? ` · 핸디캡 ${t.handicap}` : ""}</small>`;
+    if (old !== undefined && Number(old) !== t.points) bumpEl(pts, "changed");
+    pts.dataset.v = t.points;
+    el.querySelector('[data-k="max"]').innerHTML = open > 0 ? `최대 입찰 가능 <b>${maxBidOf(t)}P</b>${open > 1 ? ` · 빈자리 몫 ${c.reservePerSlot * (open - 1)}P 보관` : ""}` : "팀 완성";
     el.querySelector('[data-k="sum"]').textContent = sum.toFixed(1);
     el.querySelector('[data-k="avg"]').textContent = avg === null ? "-" : avg.toFixed(1);
-    const rows = t.roster.map(r => `<li><span class="who">${avatar(r.player, 22)}<span>${esc(r.player.name)} <span style="color:var(--muted)">${playerScore(r.player).toFixed(1)}</span></span></span>${
-      r.captain ? `<span class="pr cap">팀장</span>` : r.random ? `<span class="pr rnd">무작위</span>` : `<span class="pr">${r.price}P</span>`}</li>`);
-    while (rows.length < CONFIG.teamSize) rows.push(`<li class="empty">빈자리</li>`);
+    const rows = roster.map(r => `<li><span class="who">${avatar(r, 22)}<span>${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
+      r.how === "captain" ? `<span class="pr cap">팀장</span>` : r.how === "random" ? `<span class="pr rnd">무작위</span>` : `<span class="pr">${r.price}P</span>`}</li>`);
+    while (rows.length < c.teamSize) rows.push(`<li class="empty">빈자리</li>`);
     el.querySelector('[data-k="roster"]').innerHTML = rows.join("");
-    el.classList.toggle("leading", bid.team === t.id && state !== "result");
-
-    // 버튼 켜기/끄기 — 포인트가 모자라거나, 빈자리 몫을 못 남기거나, 자리가 없으면 눌리지 않음
+    el.classList.toggle("leading", s.bid_team === t.idx && s.status === "running");
     let why = null, anyOk = false;
     el.querySelectorAll("[data-q]").forEach(b => {
-      const r = bidBlockReason(t, bid.amount + Number(b.dataset.q));
-      b.disabled = !!r;
-      if (!r) anyOk = true;
-      else if (!why) why = anyOk ? `+${b.dataset.q} 입찰 불가: ${r}` : `입찰 불가: ${r}`;
+      const amt = s.bid_amount + Number(b.dataset.q) * c.bidStep;
+      b.textContent = `+${Number(b.dataset.q) * c.bidStep}`;
+      const r = blockReason(t, amt); b.disabled = !!r;
+      if (!r) anyOk = true; else if (!why) why = r;
     });
-    const dr = bidBlockReason(t, bid.amount + CONFIG.bidStep);
-    el.querySelector("[data-direct]").disabled = !!dr;
-    el.querySelector("input").disabled = !!dr;
-    el.querySelector('[data-k="why"]').textContent = state === "running" && why ? why : "";
-    if (t.id === changedTeamId) bumpEl(el.querySelector('[data-k="points"]'), "changed");
+    const dr = blockReason(t, s.bid_amount + c.bidStep);
+    el.querySelector("[data-direct]").disabled = !!dr; el.querySelector(".direct input").disabled = !!dr;
+    el.querySelector('[data-k="why"]').textContent = s.status === "running" && !anyOk && why ? `입찰 불가: ${why}` : "";
   }
-  renderTimer();
 }
 
 function renderTimer() {
-  const left = timeLeft();
-  const num = document.getElementById("timerNum");
-  num.textContent = state === "done" || state === "result" ? "-" : (left / 1000).toFixed(1);
-  num.classList.toggle("low", state === "running" && left < 5000);
-  document.getElementById("timerBar").style.width = `${Math.min(100, left / (CONFIG.maxSeconds * 1000) * 100)}%`;
+  if (P) {
+    const left = P.status === "running" ? Math.max(0, P.ends_at - Date.now()) : P.status === "paused" ? P.paused_left_ms : P.status === "ready" ? P.config.startSeconds * 1000 : 0;
+    const num = $("timerNum");
+    num.textContent = ["done", "result", "setup"].includes(P.status) ? "-" : (left / 1000).toFixed(1);
+    num.classList.toggle("low", P.status === "running" && left < 5000);
+    $("timerBar").style.width = `${Math.min(100, left / (P.config.maxSeconds * 1000) * 100)}%`;
+  }
+  requestAnimationFrame(renderTimer);
 }
+requestAnimationFrame(renderTimer);
 
-function addLog(text, kind = "") {
-  const li = document.createElement("li");
-  li.className = kind;
-  li.textContent = text;
-  const ul = document.getElementById("log");
-  ul.prepend(li);
-  while (ul.children.length > 60) ul.lastChild.remove();
-}
-
-function flash(title, subHtml, color, player) {
-  const f = document.getElementById("flash");
-  f.style.setProperty("--c", color);
-  document.getElementById("flashPhoto").innerHTML = player ? avatar(player, 160) : "";
-  document.getElementById("flashTitle").textContent = title;
-  document.getElementById("flashSub").innerHTML = subHtml;
-  bumpEl(f, "show");
-}
-
-function bumpEl(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
-
-let toastTimer;
-function toast(text) {
-  const t = document.getElementById("toast");
-  t.textContent = text; t.style.display = "block";
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (t.style.display = "none"), 2600);
-}
-
-/* =====================================================================
-   [9] 조작 버튼
-   ===================================================================== */
-document.getElementById("btnEdit").addEventListener("click", openEditor);
-document.getElementById("btnEdit2").addEventListener("click", openEditor);
-document.getElementById("btnDraw").addEventListener("click", startDraw);
-document.getElementById("btnSkipDraw").addEventListener("click", skipDraw);
-document.getElementById("btnDrawDone").addEventListener("click", confirmDraw);
-document.getElementById("btnEdCancel").addEventListener("click", closeEditor);
-document.getElementById("btnEdSave").addEventListener("click", saveEditor);
-document.getElementById("btnEdDefault").addEventListener("click", () => {
-  if (!confirm("가짜 선수 25명 기본값으로 되돌릴까요? 올린 사진과 고친 내용이 지워집니다.")) return;
-  draft = seedProfiles();
-  buildEditor();
-});
-document.getElementById("btnStart").addEventListener("click", startLot);
-document.getElementById("btnPause").addEventListener("click", pauseLot);
-document.getElementById("btnHammer").addEventListener("click", finishLot);
-document.getElementById("btnReset").addEventListener("click", () => {
-  if (confirm("처음부터 다시 시작할까요? 경매 결과가 지워집니다. (선수 정보와 사진은 그대로 남아요)")) { state = "setup"; init(); }
-});
+/* ---------- 조작 ---------- */
+$("btnStart").onclick = startOrResume;
+$("btnPause").onclick = pause;
+$("btnHammer").onclick = finishLot;
+$("btnNext").onclick = () => { if (P.status === "result") nextPlayer(); };
+$("autoNext").onchange = e => { P.auto_start = e.target.checked; };
+$("btnReset").onclick = () => { if (confirm("처음부터 다시 시작할까요? 경매 결과가 지워집니다. (선수 정보·설정은 그대로)")) init(); };
 document.addEventListener("keydown", e => {
-  if (e.code !== "Space" || /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
-  if (document.getElementById("editOverlay").classList.contains("show")) return;
+  if (e.code !== "Space" || /INPUT|SELECT|TEXTAREA|BUTTON/.test(e.target.tagName)) return;
+  if (document.querySelector(".overlay.show")) return;
   e.preventDefault();
-  if (state === "running") pauseLot(); else startLot();
+  if (P.status === "running") pause(); else startOrResume();
 });
 
 init();

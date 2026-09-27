@@ -17,7 +17,7 @@
     <p id="landingMsg">새 경매를 만들면 진행자 링크 1개와 팀장 전용 링크가 팀 수만큼 생깁니다.</p>
     <div class="row" style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn primary big" id="btnCreate">새 온라인 경매 만들기</button>
-      <a class="btn big" href="admin.html" style="text-decoration:none">운영진 콘솔</a>
+      <a class="btn big" href="admin.html" style="text-decoration:none">운영자 콘솔</a>
       <a class="btn big" href="practice.html" style="text-decoration:none">혼자 연습하기 (1단계 연습판)</a>
     </div>
   </div>
@@ -37,9 +37,7 @@
     <span class="state-line" id="progress"></span>
     <button class="btn" id="btnSignups">신청 명단 <b id="signupCount">0</b></button>
     <button class="btn" id="btnLinks">팀장 링크</button>
-    <a class="btn" id="btnConsole" style="text-decoration:none">운영진 콘솔</a>
-    <button class="btn" id="btnSettings">경매 설정</button>
-    <button class="btn" id="btnScores">점수 고치기</button>
+    <a class="btn" id="btnConsole" style="text-decoration:none">운영자 콘솔</a>
     <button class="btn" id="btnEdit">선수 관리</button>
     <button class="btn primary" id="btnStart">경매 시작 (Space)</button>
     <button class="btn" id="btnPause">일시정지</button>
@@ -59,20 +57,13 @@
   <section class="stage" id="stage">
     <div class="setup-box" id="setupBox">
       <h2 id="setupTitle">경매 준비</h2>
-      <ol class="steps">
-        <li><b>신청 명단</b>에서 팀장(★)과 핸디캡을 정하고 ‘이 명단으로 경매 선수 채우기’</li>
-        <li><b>경매 설정</b>에서 시작 포인트·입찰 단위·팀 인원·점수표 확인</li>
-        <li><b>팀장 링크</b>를 팀장들에게 보내기 (한 번에 복사 가능)</li>
-        <li>경매 순서를 <b>무작위로 뽑거나</b> <b>직접 정하기</b></li>
-      </ol>
+      <p>명단 채우기·팀장·핸디캡·경매 설정·순서는 <b>운영자 콘솔</b>의 ‘경매 준비’ 탭에서 해요. 준비가 끝나면 이 화면에 첫 선수가 올라와요.</p>
       <div class="row">
-        <button class="btn big" id="btnSignups2">① 신청 명단</button>
-        <button class="btn big" id="btnSettings2">② 경매 설정</button>
-        <button class="btn big" id="btnLinks2">③ 팀장 링크</button>
-        <button class="btn big" id="btnOrder">④ 순서 직접 정하기</button>
-        <button class="btn primary big" id="btnDraw">④ 순서 무작위로 뽑기</button>
+        <a class="btn primary big" id="btnConsole2" style="text-decoration:none">운영자 콘솔에서 준비하기</a>
+        <button class="btn big" id="btnLinks2">팀장 링크</button>
+        <button class="btn big" id="btnDraw">방송용 순서 추첨</button>
       </div>
-      <div class="row"><button class="btn" id="btnEdit2">선수 관리 (사진·각오·직접 추가)</button></div>
+      <div class="row"><button class="btn big" id="btnSignups2">신청 명단 보기</button><button class="btn" id="btnEdit2">선수 관리 (사진·각오)</button></div>
     </div>
     <div id="lotLeft">
       <div class="card-label">NOW ON AUCTION</div>
@@ -136,64 +127,14 @@
     <h2>참가 신청 명단 <span id="signupCount2" style="color:var(--gold)">0</span>명</h2>
     <p>아래 신청 링크를 디스코드 서버에 올리면, 참가자가 디스코드로 로그인해서 신청합니다. 새 신청은 이 명단에 바로 올라옵니다.</p>
     <div class="link-row" style="--c:#5865f2"><b>참가 신청 링크</b><input readonly id="signupLink"><button class="btn" data-copy>복사</button></div>
-    <div class="prep-bar" id="prepBar"></div>
     <div class="signup-table-wrap">
       <table class="signup-table">
-        <thead><tr><th>포함</th><th>팀장</th><th>핸디캡</th><th>#</th><th>디스코드</th><th>게임 닉네임</th><th>최고 티어</th><th>현재 티어</th><th>포지션</th><th>점수</th><th>신청 시각</th></tr></thead>
+        <thead><tr><th>팀장</th><th>#</th><th>디스코드</th><th>게임 닉네임</th><th>최고 티어</th><th>현재 티어</th><th>포지션</th><th>점수</th><th>신청 시각</th></tr></thead>
         <tbody id="signupRows"></tbody>
       </table>
     </div>
-    <p style="font-size:13px">★를 누른 순서대로 1팀, 2팀…이 됩니다. 팀 수 = 팀장 수예요. 핸디캡은 그 팀장의 시작 포인트에서 깎을 포인트예요. 티어·점수는 운영진 콘솔에서 고치거나, 선수를 채운 뒤 ‘점수 고치기’에서 고칠 수 있어요.</p>
-    <div class="draw-ctrl"><button class="btn" id="btnSignupsClose">닫기</button><button class="btn primary big" id="btnLoadSignups">이 명단으로 경매 선수 채우기</button></div>
-  </div>
-</div>
-
-<!-- 경매 설정 -->
-<div class="overlay" id="settingsOverlay">
-  <div class="links">
-    <h2>경매 설정</h2>
-    <p id="settingsNote"></p>
-    <div class="set-grid">
-      <label>시작 포인트<input type="number" id="cfStart" min="10" step="1"></label>
-      <label>입찰 단위<input type="number" id="cfStep" min="1" step="1"></label>
-      <label>팀 인원 (팀장 포함)<input type="number" id="cfSize" min="1" max="12" step="1"></label>
-      <label>빈자리 1칸당 남길 포인트<input type="number" id="cfReserve" min="0" step="1"></label>
-    </div>
-    <h3 class="set-h">팀장 핸디캡 (시작 포인트에서 깎기)</h3>
-    <div class="set-grid" id="cfHandicaps"></div>
-    <h3 class="set-h">티어 점수 계산</h3>
-    <div class="weight">
-      <label>최고 티어 비율 <b id="cfWeightLabel">50%</b><input type="range" id="cfWeight" min="0" max="100" step="5"></label>
-      <div class="calc" id="cfExample"></div>
-    </div>
-    <div class="tier-grid" id="cfTiers"></div>
-    <div><button class="btn" id="btnTierDefault" type="button">기본 점수표로 (아이언1 = 1점 … 레디언트 = 25점)</button></div>
-    <div class="draw-ctrl"><button class="btn" id="btnSettingsClose">닫기</button><button class="btn primary big" id="btnSettingsSave">저장</button></div>
-  </div>
-</div>
-
-<!-- 점수 고치기 (경매 중에도 가능) -->
-<div class="overlay" id="scoresOverlay">
-  <div class="links">
-    <h2>선수 티어·점수 고치기</h2>
-    <p>부계정처럼 티어보다 잘하는 선수는 점수를 직접 적어 주세요. 비우면 점수표로 자동 계산해요. 저장하면 모든 화면의 팀 합계·평균이 바로 바뀌고, 신청 명단(운영진 콘솔)에도 같이 반영돼요.</p>
-    <div class="signup-table-wrap">
-      <table class="signup-table">
-        <thead><tr><th>선수</th><th>팀</th><th>최고 티어</th><th>현재 티어</th><th>자동 점수</th><th>직접 정한 점수</th><th></th></tr></thead>
-        <tbody id="scoreRows"></tbody>
-      </table>
-    </div>
-    <div class="draw-ctrl"><button class="btn primary" id="btnScoresClose">닫기</button></div>
-  </div>
-</div>
-
-<!-- 순서 직접 정하기 -->
-<div class="overlay" id="orderOverlay">
-  <div class="links">
-    <h2>경매 순서 직접 정하기</h2>
-    <p>▲▼로 순서를 바꾸세요. 위에서부터 차례로 경매에 올라와요.</p>
-    <ol class="order-edit" id="orderEdit"></ol>
-    <div class="draw-ctrl"><button class="btn" id="btnOrderClose">닫기</button><button class="btn" id="btnOrderShuffle">무작위로 섞기</button><button class="btn primary big" id="btnOrderSave">이 순서로 확정</button></div>
+    <p style="font-size:13px">팀장 지정·명단 채우기·점수 고치기는 운영자 콘솔에서 해요.</p>
+    <div class="draw-ctrl"><button class="btn primary" id="btnSignupsClose">닫기</button></div>
   </div>
 </div>
 
@@ -277,7 +218,7 @@ async function boot() {
     return;
   }
   rememberHost(id, key);
-  $("btnConsole").href = new URL("admin.html", location.href).toString() + "?" + new URLSearchParams({ claim: id, k: key });
+  $("btnConsole").href = $("btnConsole2").href = new URL("admin.html", location.href).toString() + "?" + new URLSearchParams({ claim: id, k: key });
   $("app").hidden = false;
   let chat = null;
   net = connect({
@@ -340,8 +281,7 @@ function onState(s) {
   if (!prev || prev.teams.length !== s.teams.length || prev.players_version !== s.players_version
       || prev.teams.some((t, i) => !s.teams[i] || t.name !== s.teams[i].name || t.color !== s.teams[i].color)) buildTeams();
   render(prev);
-  if ($("signupOverlay").classList.contains("show")) renderPrepBar();
-  if ($("scoresOverlay").classList.contains("show")) renderScores();
+
 }
 
 /* ---------- 조작 버튼 ---------- */
@@ -445,216 +385,22 @@ async function loadSignups() {
   signupsLoaded = true;
   renderSignups(new Set(fresh.map(x => x.id)));
 }
-// 경매 준비: 누구를 넣을지, 누가 팀장(팀 순서)인지, 팀장별 핸디캡
-const prep = { ready: false, excluded: new Set(), captains: [], handicaps: {} };
-function syncPrep() {
-  const ids = new Set(signups.map(x => x.id));
-  if (!prep.ready && signups.length) {      // 처음: 운영진 콘솔에서 ★한 사람을 팀장으로 (신청 순서대로)
-    prep.captains = signups.filter(x => x.captain).map(x => x.id);
-    prep.ready = true;
-  }
-  prep.captains = prep.captains.filter(id => ids.has(id));
-  [...prep.excluded].forEach(id => { if (!ids.has(id)) prep.excluded.delete(id); });
-}
-let lastSignupSig = "";
 function renderSignups(freshIds = new Set()) {
   $("signupCount").textContent = signups.length;
   $("signupCount2").textContent = signups.length;
-  syncPrep();
-  // 핸디캡을 입력하는 도중에는 다시 그리지 않음
-  const f = document.activeElement;
-  const sig = JSON.stringify([signups, prep.captains, [...prep.excluded], prep.handicaps, S && S.config]);
-  if (sig === lastSignupSig && !freshIds.size) return;
-  if (f && $("signupRows").contains(f) && f.tagName === "INPUT") return;
-  lastSignupSig = sig;
-  const cfg = S ? S.config : CONFIG;
-  $("signupRows").innerHTML = signups.length ? signups.map((x, i) => {
-    const capNo = prep.captains.indexOf(x.id) + 1, inc = capNo > 0 || !prep.excluded.has(x.id);
-    return `<tr class="${freshIds.has(x.id) ? "fresh" : ""} ${inc ? "" : "excluded"} ${capNo ? "cap" : ""}" data-sid="${x.id}">
-      <td><input type="checkbox" data-inc ${inc ? "checked" : ""} ${capNo ? "disabled" : ""} title="경매에 넣기"></td>
-      <td><button class="star ${capNo ? "on" : ""}" data-cap>${capNo ? `★ ${capNo}팀` : "★"}</button></td>
-      <td>${capNo ? `<input type="number" data-hc min="0" step="${cfg.bidStep || 5}" value="${prep.handicaps[x.id] || 0}" title="시작 포인트에서 깎을 포인트">` : ""}</td>
-      <td>${i + 1}</td>
+  $("signupRows").innerHTML = signups.length ? signups.map((x, i) => `
+    <tr class="${freshIds.has(x.id) ? "fresh" : ""} ${x.captain ? "cap" : ""}">
+      <td>${x.captain ? "★" : ""}</td><td>${i + 1}</td>
       <td><span class="dc">${x.discord_avatar ? `<img src="${esc(x.discord_avatar)}" alt="">` : avatar({ name: x.discord_name }, 26)}<span><b>${esc(x.discord_name)}</b>${x.discord_username ? `<small>@${esc(x.discord_username)}</small>` : ""}</span></span></td>
       <td><b>${esc(x.nick)}</b></td><td>${esc(x.peak)}</td><td>${esc(x.current)}</td><td>${esc(x.pos)}</td>
       <td class="sc">${playerScore(x).toFixed(1)}${x.score != null ? `<span class="over">직접 정함</span>` : ""}</td>
       <td class="tm">${new Date(x.at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
-    </tr>`; }).join("") : `<tr><td colspan="11" style="color:var(--muted);text-align:center;padding:24px">아직 신청이 없어요. 신청 링크를 디스코드 서버에 올려 주세요.</td></tr>`;
-  renderPrepBar();
+    </tr>`).join("") : `<tr><td colspan="9" style="color:var(--muted);text-align:center;padding:24px">아직 신청이 없어요. 신청 링크를 디스코드 서버에 올려 주세요.</td></tr>`;
 }
-function renderPrepBar() {
-  const cfg = S ? S.config : CONFIG;
-  const nCap = prep.captains.length;
-  const nPlayers = signups.filter(x => !prep.captains.includes(x.id) && !prep.excluded.has(x.id)).length;
-  const slots = nCap * (cfg.teamSize - 1);
-  const locked = S && S.status !== "setup";
-  $("prepBar").innerHTML = `팀장 <b>${nCap}</b>명 → 팀 <b>${nCap}</b>개 · 경매 선수 <b>${nPlayers}</b>명 · 팀 인원 ${cfg.teamSize}명(팀장 포함) → 팀원 자리 ${slots}칸
-    ${nCap === 0 ? `<div class="warn">★를 눌러 팀장을 1명 이상 골라 주세요.</div>` : ""}
-    ${nCap && nPlayers < slots ? `<div class="warn">선수가 자리보다 ${slots - nPlayers}명 적어요. 모든 자리가 차지 않아도 경매는 할 수 있어요.</div>` : ""}
-    ${nCap && nPlayers > slots ? `<div class="warn">선수가 자리보다 ${nPlayers - slots}명 많아요. 남는 선수는 팀에 못 들어가요. (경매 설정에서 팀 인원을 늘릴 수 있어요)</div>` : ""}
-    ${locked ? `<div class="warn">경매가 시작돼서 명단을 다시 채울 수 없어요. ‘처음부터 다시’를 누르면 다시 할 수 있어요.</div>` : ""}`;
-  $("btnLoadSignups").disabled = !nCap || locked;
-}
-$("signupRows").addEventListener("click", e => {
-  const tr = e.target.closest("[data-sid]"); if (!tr) return;
-  const id = Number(tr.dataset.sid);
-  if (e.target.closest("[data-cap]")) {
-    const i = prep.captains.indexOf(id);
-    if (i >= 0) prep.captains.splice(i, 1);
-    else if (prep.captains.length >= 8) return toast("팀장은 8명까지 고를 수 있어요.");
-    else { prep.captains.push(id); prep.excluded.delete(id); }
-    lastSignupSig = ""; renderSignups();
-  }
-});
-$("signupRows").addEventListener("change", e => {
-  const tr = e.target.closest("[data-sid]"); if (!tr) return;
-  const id = Number(tr.dataset.sid);
-  if (e.target.matches("[data-inc]")) { if (e.target.checked) prep.excluded.delete(id); else prep.excluded.add(id); lastSignupSig = ""; renderSignups(); }
-});
-$("signupRows").addEventListener("input", e => {
-  const tr = e.target.closest("[data-sid]"); if (!tr || !e.target.matches("[data-hc]")) return;
-  prep.handicaps[Number(tr.dataset.sid)] = Math.max(0, Math.floor(Number(e.target.value) || 0));
-});
-$("btnLoadSignups").addEventListener("click", async () => {
-  if (!prep.captains.length) return toast("팀장을 1명 이상 골라 주세요.");
-  const start = S.config.startPoints;
-  const bad = prep.captains.find(id => (prep.handicaps[id] || 0) >= start);
-  if (bad !== undefined) return toast(`핸디캡은 시작 포인트(${start}P)보다 작아야 해요.`);
-  if (S.players.length && !confirm("지금 경매 선수 명단을 이 신청 명단으로 바꿀까요? (지금 선수 목록은 지워져요)")) return;
-  const handicaps = {};
-  prep.captains.forEach(id => { handicaps[id] = prep.handicaps[id] || 0; });
-  const r = await host("load_signups", { captains: prep.captains, exclude: [...prep.excluded], handicaps });
-  if (r && r.ok) { toast(`팀장 ${prep.captains.length}명, 선수를 채웠어요. 다음은 ② 경매 설정이에요.`); $("signupOverlay").classList.remove("show"); }
-});
 function openSignups() { $("signupOverlay").classList.add("show"); loadSignups(); }
 $("btnSignups").addEventListener("click", openSignups);
 $("btnSignups2").addEventListener("click", openSignups);
 $("btnSignupsClose").addEventListener("click", () => $("signupOverlay").classList.remove("show"));
-
-/* ---------- 경매 설정: 규칙 숫자(시작 전만), 핸디캡(시작 전만), 점수표·비율(언제든) ---------- */
-let cfTiers = {};
-function openSettings() {
-  if (!S) return;
-  const c = S.config, setup = S.status === "setup";
-  $("cfStart").value = c.startPoints; $("cfStep").value = c.bidStep; $("cfSize").value = c.teamSize; $("cfReserve").value = c.reservePerSlot;
-  ["cfStart", "cfStep", "cfSize", "cfReserve"].forEach(id => ($(id).disabled = !setup));
-  $("settingsNote").textContent = setup ? "경매를 시작하기 전이라 모두 바꿀 수 있어요. 바꾼 값은 모든 팀장 화면에 바로 보여요."
-    : "경매가 시작돼서 시작 포인트·입찰 단위·팀 인원·핸디캡은 잠겨 있어요. 점수표와 비율은 지금도 바꿀 수 있어요.";
-  $("cfHandicaps").innerHTML = S.teams.length ? S.teams.map(t => `<label style="color:${esc(t.color)}">${esc(t.name)}<input type="number" min="0" step="${c.bidStep}" data-team="${t.idx}" value="${t.handicap || 0}" ${setup ? "" : "disabled"}></label>`).join("")
-    : `<div style="color:var(--muted)">팀장이 아직 없어요. 신청 명단에서 팀장을 정하면 여기서 핸디캡을 줄 수 있어요.</div>`;
-  cfTiers = { ...TIER_SCORE, ...(c.tierScores || {}) };
-  $("cfWeight").value = Math.round(peakWeight(c) * 100);
-  renderTierInputs(); updateWeight();
-  $("settingsOverlay").classList.add("show");
-}
-function renderTierInputs() {
-  $("cfTiers").innerHTML = Object.keys(TIER_SCORE).map(t => `<label>${t}<input type="number" step="0.5" min="0" max="1000" data-tier="${t}" value="${cfTiers[t]}"></label>`).join("");
-}
-function updateWeight() {
-  const w = Number($("cfWeight").value) / 100;
-  $("cfWeightLabel").textContent = `${Math.round(w * 100)}% (현재 티어 ${Math.round((1 - w) * 100)}%)`;
-  const ex = { peak: "불멸 3", current: "초월자 2" }, cfg = { tierScores: cfTiers, peakWeight: w };
-  $("cfExample").textContent = `예: 최고 불멸 3 / 현재 초월자 2 → ${scoreFormula(ex, cfg)}점`;
-}
-$("cfWeight").addEventListener("input", updateWeight);
-$("cfTiers").addEventListener("input", e => { if (e.target.dataset.tier) { cfTiers[e.target.dataset.tier] = Number(e.target.value); updateWeight(); } });
-$("btnTierDefault").addEventListener("click", () => { cfTiers = { ...TIER_SCORE }; renderTierInputs(); updateWeight(); });
-$("btnSettingsSave").addEventListener("click", async () => {
-  const setup = S.status === "setup";
-  const arg = { tierScores: {}, peakWeight: Number($("cfWeight").value) / 100 };
-  for (const t of Object.keys(TIER_SCORE)) {
-    const v = Number(cfTiers[t]);
-    if (!(v >= 0 && v <= 1000)) return toast(`${t} 점수를 0에서 1000 사이로 적어 주세요.`);
-    arg.tierScores[t] = v;
-  }
-  if (setup) {
-    const nums = { startPoints: "cfStart", bidStep: "cfStep", teamSize: "cfSize", reservePerSlot: "cfReserve" };
-    for (const [k, id] of Object.entries(nums)) {
-      const v = Number($(id).value);
-      if (!Number.isInteger(v)) return toast("시작 포인트·입찰 단위·팀 인원·빈자리 몫은 정수로 적어 주세요.");
-      arg[k] = v;
-    }
-  }
-  $("btnSettingsSave").disabled = true;
-  const r = await host("set_config", arg);
-  let okAll = !!(r && r.ok);
-  if (okAll && setup) {
-    for (const inp of $("cfHandicaps").querySelectorAll("[data-team]")) {
-      const team = Number(inp.dataset.team), amount = Math.max(0, Math.floor(Number(inp.value) || 0));
-      if ((S.teams[team].handicap || 0) === amount) continue;
-      const h = await host("set_handicap", { team, amount });
-      if (!h || !h.ok) { okAll = false; break; }
-    }
-  }
-  $("btnSettingsSave").disabled = false;
-  if (okAll) { toast("경매 설정을 저장했어요."); $("settingsOverlay").classList.remove("show"); }
-});
-$("btnSettings").addEventListener("click", openSettings);
-$("btnSettings2").addEventListener("click", openSettings);
-$("btnSettingsClose").addEventListener("click", () => $("settingsOverlay").classList.remove("show"));
-
-/* ---------- 선수 티어·점수 고치기 (경매 중에도) ---------- */
-function renderScores() {
-  const f = document.activeElement;
-  if (f && $("scoreRows").contains(f) && /INPUT|SELECT/.test(f.tagName)) return;   // 고치는 도중에는 다시 그리지 않음
-  const opts = sel => Object.keys(TIER_SCORE).map(t => `<option ${t === sel ? "selected" : ""}>${t}</option>`).join("");
-  $("scoreRows").innerHTML = S.players.length ? S.players.map(p => {
-    const t = p.team !== null ? S.teams[p.team] : null;
-    return `<tr data-pid="${p.id}">
-      <td><span class="dc">${avatar(p, 24)}<b>${esc(p.name)}</b></span></td>
-      <td>${t ? `<span style="color:${esc(t.color)}">${esc(t.name)}</span>${p.how === "captain" ? " (팀장)" : ""}` : `<span style="color:var(--muted)">대기</span>`}</td>
-      <td><select data-f="peak">${opts(p.peak)}</select></td>
-      <td><select data-f="current">${opts(p.current)}</select></td>
-      <td class="sc" data-auto>${autoScore(p).toFixed(1)}</td>
-      <td><input type="number" data-f="score" step="0.1" min="0" max="1000" placeholder="자동" value="${p.score != null ? p.score : ""}"></td>
-      <td><button class="btn" data-save>저장</button></td></tr>`; }).join("")
-    : `<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:24px">아직 선수가 없어요.</td></tr>`;
-}
-$("scoreRows").addEventListener("input", e => {
-  const tr = e.target.closest("[data-pid]"); if (!tr) return;
-  tr.querySelector("[data-auto]").textContent = autoScore({ peak: tr.querySelector('[data-f="peak"]').value, current: tr.querySelector('[data-f="current"]').value }).toFixed(1);
-});
-$("scoreRows").addEventListener("click", async e => {
-  if (!e.target.matches("[data-save]")) return;
-  const tr = e.target.closest("[data-pid]"), sc = tr.querySelector('[data-f="score"]').value.trim();
-  if (sc !== "" && !(Number(sc) >= 0 && Number(sc) <= 1000)) return toast("점수는 0에서 1000 사이로 적어 주세요.");
-  e.target.blur();
-  const r = await host("set_player", { id: Number(tr.dataset.pid), peak: tr.querySelector('[data-f="peak"]').value,
-    current: tr.querySelector('[data-f="current"]').value, score: sc === "" ? null : Number(sc) });
-  if (r && r.ok) { toast("저장했어요. 모든 화면의 팀 점수가 바뀌었어요."); renderScores(); }
-});
-$("btnScores").addEventListener("click", () => { if (!S) return; renderScores(); $("scoresOverlay").classList.add("show"); });
-$("btnScoresClose").addEventListener("click", () => $("scoresOverlay").classList.remove("show"));
-
-/* ---------- 경매 순서 직접 정하기 ---------- */
-let manualOrder = [];
-function renderOrder() {
-  $("orderEdit").innerHTML = manualOrder.map((id, i) => {
-    const p = S.players.find(x => x.id === id);
-    return `<li data-i="${i}"><span class="no">${i + 1}</span>${avatar(p, 26)}<span class="nm">${esc(p.name)} <span style="color:var(--muted);font-size:12px">${esc(p.pos)} · ${playerScore(p).toFixed(1)}</span></span>
-      <button data-mv="-1" ${i === 0 ? "disabled" : ""}>▲</button><button data-mv="1" ${i === manualOrder.length - 1 ? "disabled" : ""}>▼</button></li>`; }).join("")
-    || `<li style="color:var(--muted)">경매에 올릴 선수가 없어요. 먼저 ① 신청 명단으로 선수를 채워 주세요.</li>`;
-}
-$("btnOrder").addEventListener("click", () => {
-  if (!S || S.status !== "setup") return toast("경매 준비 단계에서만 순서를 정할 수 있어요.");
-  manualOrder = [...S.queue]; renderOrder(); $("orderOverlay").classList.add("show");
-});
-$("orderEdit").addEventListener("click", e => {
-  const b = e.target.closest("[data-mv]"); if (!b) return;
-  const i = Number(b.closest("[data-i]").dataset.i), j = i + Number(b.dataset.mv);
-  [manualOrder[i], manualOrder[j]] = [manualOrder[j], manualOrder[i]];
-  renderOrder();
-});
-$("btnOrderShuffle").addEventListener("click", () => {
-  for (let i = manualOrder.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [manualOrder[i], manualOrder[j]] = [manualOrder[j], manualOrder[i]]; }
-  renderOrder();
-});
-$("btnOrderSave").addEventListener("click", async () => {
-  if (!manualOrder.length) return toast("경매에 올릴 선수가 없어요.");
-  const r = await host("set_order", manualOrder);
-  if (r && r.ok) $("orderOverlay").classList.remove("show");
-});
-$("btnOrderClose").addEventListener("click", () => $("orderOverlay").classList.remove("show"));
 
 /* ---------- 경매 순서 뽑기 (진행자 화면에서 추첨 연출 → 결과를 서버에 저장) ---------- */
 let drawOrder = [], drawIndex = 0, drawTimer = null;
@@ -840,7 +586,7 @@ function render(prev) {
   const s = S;
   const setup = s.status === "setup";
   $("setupBox").style.display = setup ? "" : "none";
-  $("setupTitle").textContent = s.players.length ? `팀장 ${s.teams.length}명 · 경매 선수 ${s.queue.length}명` : "아직 선수가 없어요 — ① 신청 명단부터";
+  $("setupTitle").textContent = s.players.length ? `팀장 ${s.teams.length}명 · 경매 선수 ${s.queue.length}명` : "아직 선수가 없어요";
   $("lotLeft").style.display = setup ? "none" : "";
   $("lotRight").style.display = setup ? "none" : "";
 
