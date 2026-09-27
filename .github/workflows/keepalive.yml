@@ -1,0 +1,31 @@
+# 무료 요금제(Supabase)가 7일 동안 안 쓰여서 멈추지 않도록 3일마다 서버를 한 번 깨움
+# 주소와 공개 키(publishable)는 config.js 에서 읽음 — 따로 설정할 것 없음
+name: Keep Supabase awake
+
+on:
+  schedule:
+    - cron: "23 4 */3 * *"   # 3일마다 한국 시각 오후 1시 23분쯤 (UTC 04:23)
+  workflow_dispatch:          # Actions 화면에서 "Run workflow"로 바로 실행해 볼 수 있음
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ping Supabase
+        run: |
+          URL=$(grep -oE 'https://[a-z0-9]+\.supabase\.co' config.js | head -1)
+          KEY=$(grep -oE 'sb_publishable_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9._-]+' config.js | head -1)
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then echo "config.js 에서 Supabase 주소/키를 찾지 못했어요"; exit 1; fi
+          call() { curl -sS -o /tmp/out -w "%{http_code}" -X POST "$URL/rest/v1/rpc/$1" -H "apikey: $KEY" -H "Content-Type: application/json" -d "$2"; }
+          CODE=$(call keepalive '{}')
+          echo "keepalive -> HTTP $CODE: $(cat /tmp/out)"
+          if [ "$CODE" != "200" ]; then
+            # setup.sql 을 아직 다시 실행하지 않았으면 예전부터 있던 함수로 대신 깨움
+            CODE=$(call whoami '{"p_id":"00000000-0000-0000-0000-000000000000","p_key":"keepalive"}')
+            echo "whoami -> HTTP $CODE: $(cat /tmp/out)"
+          fi
+          if [ "$CODE" != "200" ]; then echo "서버가 응답하지 않아요. Supabase 대시보드에서 프로젝트가 멈췄는지 확인하세요."; exit 1; fi

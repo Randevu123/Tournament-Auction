@@ -118,6 +118,7 @@ create table if not exists public.site_settings (
 );
 insert into public.site_settings (id) values (1) on conflict do nothing;
 alter table public.site_settings add column if not exists last_ping timestamptz;   -- 운영자 콘솔을 열 때마다 기록 (무료 요금제 7일 정지 방지)
+alter table public.site_settings add column if not exists last_auto_ping timestamptz;  -- GitHub 자동 깨우기가 마지막으로 온 시각
 
 alter table public.auctions add column if not exists title            text not null default '';
 alter table public.auctions add column if not exists signup_opens_at  timestamptz;
@@ -1312,9 +1313,19 @@ begin
     (select max(created_at) from signups), (select max(created_at) from staff_log));
   update site_settings set last_ping = now() where id = 1;
   return jsonb_build_object('ok', true, 'now', _ms(now()), 'last_activity', _ms(v_last),
+    'last_auto_ping', (select _ms(last_auto_ping) from site_settings where id = 1),
     'db_bytes', pg_database_size(current_database()),
     'rounds', (select count(*) from auctions), 'signups', (select count(*) from signups));
 end $$;
+-- 자동 깨우기: GitHub Actions가 3일마다 부름 (시각만 기록, 다른 정보는 돌려주지 않음)
+create or replace function public.keepalive() returns jsonb
+language sql security definer set search_path = public as $$
+  update site_settings set last_auto_ping = now() where id = 1;
+  select jsonb_build_object('ok', true);
+$$;
+revoke execute on function public.keepalive() from public;
+grant execute on function public.keepalive() to anon, authenticated;
+
 revoke execute on function public.service_ping() from public;
 grant execute on function public.service_ping() to anon, authenticated;
 
