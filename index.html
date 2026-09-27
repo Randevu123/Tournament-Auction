@@ -66,7 +66,7 @@
       <div class="row"><button class="btn big" id="btnSignups2">신청 명단 보기</button><button class="btn" id="btnEdit2">선수 관리 (사진·각오)</button></div>
     </div>
     <div class="result-box" id="resultBox" hidden>
-      <div class="result-head"><h2>경매 <span>결과</span></h2><button class="btn gold big" id="btnXlsx">엑셀로 내려받기</button><span class="state-line" id="resultNote"></span></div>
+      <div class="result-head"><h2>경매 <span>결과</span></h2><button class="btn big" id="btnReveal">결과 발표 다시 보기</button><button class="btn gold big" id="btnXlsx">엑셀로 내려받기</button><span class="state-line" id="resultNote"></span></div>
       <div id="resultBody"></div>
     </div>
     <div id="lotLeft">
@@ -300,6 +300,8 @@ function startOrResume() {
   if (S.status === "ready") host("start");
   else if (S.status === "paused") host("resume");
 }
+let resultSig = "", revealed = false, sawRunning = false;   // 이 화면에서 경매가 끝나는 순간을 봤을 때만 자동으로 발표 연출
+$("btnReveal").addEventListener("click", () => playResultReveal($("resultBody")));
 $("btnStart").addEventListener("click", startOrResume);
 $("btnXlsx").addEventListener("click", () => {
   const kind = downloadResultXlsx(S, S.title);
@@ -601,7 +603,16 @@ function render(prev) {
   // 경매가 끝나면 결과 화면
   const done = s.status === "done";
   $("resultBox").hidden = !done;
-  if (done) { $("lotLeft").style.display = "none"; $("lotRight").style.display = "none"; $("resultBody").innerHTML = resultHtml(s); }
+  if (done) {
+    $("lotLeft").style.display = "none"; $("lotRight").style.display = "none";
+    const sig = JSON.stringify(s.teams) + s.players.map(x => `${x.id}:${x.team}:${x.score}:${x.peak}:${x.current}`).join();
+    if (sig !== resultSig) {                 // 결과가 바뀔 때만 다시 그림 (연출이 끊기지 않게)
+      resultSig = sig;
+      const willReveal = sawRunning && !revealed;
+      $("resultBody").innerHTML = resultHtml(s, { reveal: willReveal });   // 연출할 때는 처음부터 카드를 숨겨 둠 (깜빡임 방지)
+      if (willReveal) { revealed = true; setTimeout(() => playResultReveal($("resultBody")), (s.config.resultShowMs || 2200) + 200); }
+    }
+  } else { resultSig = ""; if (!setup) sawRunning = true; }
 
   const p = s.players.find(x => x.id === s.current) || null;
   $("pPhoto").innerHTML = p ? avatar(p, 130) : "";

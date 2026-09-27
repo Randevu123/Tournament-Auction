@@ -370,12 +370,21 @@ function resultTeams(state) {
 }
 function howLabel(p) { return p.how === "captain" ? "팀장" : p.how === "random" ? "유찰 → 무작위 배정" : "낙찰"; }
 
-function resultHtml(state) {
+// 팀 순위 = 티어 점수 합계 순 (새 실력 점수를 만들지 않고, 신청 티어 점수표 합계만 씀)
+function resultRanks(state) {
   const teams = resultTeams(state);
+  const sums = teams.map(x => round1(x.sum)).sort((a, b) => b - a);
+  const rank = {};
+  teams.forEach(x => { rank[x.team.idx] = sums.indexOf(round1(x.sum)) + 1; });   // 합계가 같으면 같은 순위
+  return rank;
+}
+function resultHtml(state, { reveal = false } = {}) {
+  const teams = resultTeams(state), rank = resultRanks(state);
   const left = state.players.filter(p => p.team === null);
-  return `<div class="result-grid">${teams.map(({ team: t, roster, start, sum, avg }) => `
-      <div class="result-team" style="--c:${esc(t.color)}">
-        <div class="rt-head"><b>${esc(t.name)}</b><span>${roster.length}명</span></div>
+  return `<div class="result-grid ${reveal ? "reveal" : ""}">${teams.map(({ team: t, roster, start, sum, avg }) => `
+      <div class="result-team ${rank[t.idx] === 1 && teams.length > 1 ? "top" : ""}" style="--c:${esc(t.color)}" data-rank="${rank[t.idx]}">
+        ${rank[t.idx] === 1 && teams.length > 1 ? `<div class="rt-crown">우승 후보</div>` : ""}
+        <div class="rt-head"><b>${esc(t.name)}</b><span class="rt-rank">점수 합계 ${rank[t.idx]}위</span><span>${roster.length}명</span></div>
         <div class="rt-nums"><div><small>남은 포인트</small><b>${t.points}P</b></div><div><small>시작</small><b>${start}P</b></div><div><small>점수 합계</small><b>${sum.toFixed(1)}</b></div><div><small>평균</small><b>${avg === null ? "-" : avg.toFixed(1)}</b></div></div>
         <table class="rt-table"><tbody>${roster.map(p => `<tr class="${p.how === "random" ? "rnd" : ""}">
           <td>${avatar(p, 22)}</td><td><b>${esc(p.name)}</b>${p.discord ? `<small>${esc(p.discord)}</small>` : ""}</td>
@@ -426,4 +435,25 @@ function downloadResultXlsx(state, title) {
   document.body.appendChild(a); a.click();
   setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 4000);
   return "csv";
+}
+
+// 방송용 결과 발표 연출: 점수 합계가 낮은 팀부터 한 장씩, 마지막에 1위 팀 강조
+function playResultReveal(container, { gap = 1100 } = {}) {
+  const grid = container.querySelector(".result-grid");
+  if (!grid) return;
+  const cards = [...grid.querySelectorAll(".result-team")];
+  cards.forEach(c => c.classList.remove("shown", "crowned"));
+  grid.classList.add("reveal");
+  const order = cards.slice().sort((a, b) => Number(b.dataset.rank) - Number(a.dataset.rank));
+  (grid._timers || []).forEach(clearTimeout);
+  grid._timers = order.map((c, i) => setTimeout(() => {
+    c.classList.add("shown");
+    if (i === order.length - 1 && c.classList.contains("top")) {
+      setTimeout(() => {
+        c.classList.add("crowned");
+        const name = c.querySelector(".rt-head b").textContent;
+        flash("우승 후보", `<em>${esc(name)}</em> · 티어 점수 합계 1위`, getComputedStyle(c).getPropertyValue("--c") || "#ffd166");
+      }, 350);
+    }
+  }, 500 + i * gap));
 }

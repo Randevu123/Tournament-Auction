@@ -58,7 +58,7 @@
       </div>
     </div>
     <div class="result-box" id="resultBox" hidden>
-      <div class="result-head"><h2>경매 <span>결과</span></h2><button class="btn gold big" id="btnXlsx">엑셀로 내려받기</button><span class="state-line" id="resultNote"></span></div>
+      <div class="result-head"><h2>경매 <span>결과</span></h2><button class="btn big" id="btnReveal">결과 발표 다시 보기</button><button class="btn gold big" id="btnXlsx">엑셀로 내려받기</button><span class="state-line" id="resultNote"></span></div>
       <div id="resultBody"></div>
     </div>
     <div id="lotLeft">
@@ -533,7 +533,16 @@ function render() {
   $("lotRight").style.display = setup ? "none" : "";
   const done = s.status === "done";
   $("resultBox").hidden = !done;
-  if (done) { $("lotLeft").style.display = "none"; $("lotRight").style.display = "none"; $("resultBody").innerHTML = resultHtml(s); }
+  if (done) {
+    $("lotLeft").style.display = "none"; $("lotRight").style.display = "none";
+    const sig = JSON.stringify(s.teams) + s.players.map(x => `${x.id}:${x.team}:${x.score}:${x.peak}:${x.current}`).join();
+    if (sig !== resultSig) {                 // 결과가 바뀔 때만 다시 그림 (연출이 끊기지 않게)
+      resultSig = sig;
+      const willReveal = sawRunning && !revealed;
+      $("resultBody").innerHTML = resultHtml(s, { reveal: willReveal });   // 연출할 때는 처음부터 카드를 숨겨 둠 (깜빡임 방지)
+      if (willReveal) { revealed = true; setTimeout(() => playResultReveal($("resultBody")), (s.config.resultShowMs || 2200) + 200); }
+    }
+  } else { resultSig = ""; if (!setup) sawRunning = true; }
   $("setupTitle").textContent = `팀장 ${s.teams.length}명 · 경매 선수 ${s.queue.length}명 · 시작 ${c.startPoints}P · 입찰 단위 ${c.bidStep}P`;
   const p = s.current !== null ? cur() : null;
   $("pPhoto").innerHTML = p ? avatar(p, 130) : "";
@@ -604,6 +613,8 @@ function renderTimer() {
 requestAnimationFrame(renderTimer);
 
 /* ---------- 조작 ---------- */
+let resultSig = "", revealed = false, sawRunning = false;
+$("btnReveal").onclick = () => playResultReveal($("resultBody"));
 $("btnStart").onclick = startOrResume;
 $("btnXlsx").onclick = () => {
   const kind = downloadResultXlsx(P, "연습 경매");
@@ -613,7 +624,7 @@ $("btnPause").onclick = pause;
 $("btnHammer").onclick = finishLot;
 $("btnNext").onclick = () => { if (P.status === "result") nextPlayer(); };
 $("autoNext").onchange = e => { P.auto_start = e.target.checked; };
-$("btnReset").onclick = () => { if (confirm("처음부터 다시 시작할까요? 경매 결과가 지워집니다. (선수 정보·설정은 그대로)")) init(); };
+$("btnReset").onclick = () => { if (confirm("처음부터 다시 시작할까요? 경매 결과가 지워집니다. (선수 정보·설정은 그대로)")) { revealed = false; sawRunning = false; init(); } };
 document.addEventListener("keydown", e => {
   if (e.code !== "Space" || /INPUT|SELECT|TEXTAREA|BUTTON/.test(e.target.tagName)) return;
   if (document.querySelector(".overlay.show")) return;

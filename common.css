@@ -363,3 +363,17 @@
 .rt-table tr.rnd .pr { color: var(--warn); }
 .result-left { color: var(--warn); font-size: 13px; }
 .lock-banner { background: rgba(255,176,32,.08); border: 1px solid var(--warn); color: var(--warn); border-radius: 12px; padding: 10px 14px; font-weight: 700; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+
+/* 방송용 결과 발표 연출 */
+.result-team { position: relative; }
+.rt-head { gap: 8px; }
+.rt-rank { font-size: 11px; font-weight: 900; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; margin-left: auto; }
+.result-team.top { border-color: var(--gold); border-top-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 34px rgba(255,209,102,.35); }
+.result-team.top .rt-rank { color: #1a1400; background: var(--gold); border-color: var(--gold); }
+.rt-crown { position: absolute; top: -13px; left: 50%; transform: translateX(-50%); background: linear-gradient(90deg, #ffd166, #ffb020); color: #1a1400; font-weight: 900; font-size: 12px; letter-spacing: 2px; padding: 3px 14px; border-radius: 999px; box-shadow: 0 0 18px rgba(255,209,102,.6); white-space: nowrap; }
+.result-grid { padding-top: 10px; }
+.result-grid.reveal .result-team { opacity: 0; transform: translateY(40px) scale(.9); animation: none; transition: opacity .5s ease, transform .6s cubic-bezier(.2,1.5,.4,1); }
+.result-grid.reveal .result-team.shown { opacity: 1; transform: none; }
+.result-grid.reveal .result-team.top.shown { transform: scale(1.03); }
+.result-grid .result-team.crowned { animation: crown 1.6s ease-in-out infinite; }
+@keyframes crown { 0%, 100% { box-shadow: 0 0 0 1px var(--gold), 0 0 26px rgba(255,209,102,.35); } 50% { box-shadow: 0 0 0 2px var(--gold), 0 0 60px rgba(255,209,102,.7); } }
