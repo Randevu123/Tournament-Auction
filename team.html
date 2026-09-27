@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>내전 경매 · 팀장</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="common.css">
+<style>
+  :root { --c: var(--accent); --bidbar-h: 150px; }
+  body { padding-bottom: calc(var(--bidbar-h) + 16px); }
+  body.typing { padding-bottom: 16px; }
+  header { gap: 10px; padding: 10px 16px; }
+  .my-team { font-family: var(--num); font-size: 22px; color: var(--c); display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .my-team span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 14px 16px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+  .col { display: grid; gap: 14px; min-width: 0; }
+  .col-side { position: sticky; top: 14px; }
+
+  /* 지금 경매 중인 선수 */
+  .lot { background: linear-gradient(160deg, #1a1f30, #10131d); border: 1px solid var(--line); border-radius: 18px; padding: 18px; display: grid; gap: 12px; }
+  .lot .p-top { margin: 0; }
+  .lot .p-name { font-size: clamp(28px, 7vw, 52px); }
+  .lot-bid { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; }
+  .lot-bid .bid-amount { font-size: clamp(56px, 16vw, 96px); }
+  .lot-bid .timer-num { font-size: clamp(36px, 10vw, 60px); }
+  .lot-bid .timer { text-align: right; position: relative; }
+  .lot-bid .timer-plus { position: absolute; right: 0; top: -6px; font-size: 22px; }
+  .mine-lead { color: var(--c); text-shadow: 0 0 16px var(--c); }
+  .waiting { text-align: center; color: var(--muted); padding: 26px 8px; }
+  .waiting h2 { font-family: var(--num); font-weight: 400; font-size: 30px; color: var(--text); margin: 0 0 8px; }
+
+  /* 우리 팀 */
+  .mine { border-top: 5px solid var(--c); }
+  .mine .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .mine .team-points { font-size: 44px; }
+  .others { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .others li { display: grid; grid-template-columns: 10px 1fr auto auto; gap: 10px; align-items: center; padding: 8px 10px; background: var(--panel-2); border-radius: 8px; font-size: 14px; }
+  .others li .sw { width: 10px; height: 10px; border-radius: 3px; }
+  .others li .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .others li .pt { font-family: var(--num); font-size: 18px; }
+  .others li.lead { box-shadow: inset 0 0 0 2px var(--gold); }
+  .next-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .next-list li { display: flex; gap: 8px; align-items: center; font-size: 13px; background: var(--panel-2); border-radius: 8px; padding: 5px 8px; }
+  .next-list li .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* 입찰 버튼 줄 — 화면 아래에 늘 고정 */
+  .bidbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: rgba(10,12,20,.96); border-top: 2px solid var(--c); padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); backdrop-filter: blur(8px); }
+  body.typing .bidbar { display: none; }
+  .bidbar-in { max-width: 1180px; margin: 0 auto; display: grid; gap: 8px; }
+  .bidbar .info { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--muted); }
+  .bidbar .info b { color: var(--ok); }
+  .bidbar .btns { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 8px; }
+  .bidbar .q { background: var(--c); color: #0b0d14; border: 0; border-radius: 12px; padding: 16px 0; font-family: var(--num); font-size: 26px; }
+  .bidbar .q small { display: block; font-family: "Noto Sans KR"; font-size: 12px; font-weight: 700; opacity: .75; }
+  .bidbar .direct { display: flex; gap: 6px; }
+  .bidbar .direct input { flex: 1; min-width: 0; background: var(--panel-2); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 0 10px; font-size: 18px; }
+  .bidbar .direct button { background: var(--panel-2); color: var(--c); border: 2px solid var(--c); border-radius: 12px; padding: 0 12px; font-weight: 900; }
+  .bidbar .why { min-height: 18px; font-size: 13px; color: var(--muted); text-align: center; }
+  .bidbar .why.me { color: var(--c); font-weight: 900; }
+  .bidbar.sending .q, .bidbar.sending .direct button { opacity: .5; }
+
+  .error-box { max-width: 560px; margin: 60px auto; padding: 0 16px; text-align: center; }
+  .error-box h2 { font-family: var(--num); font-weight: 400; font-size: 32px; }
+  .error-box p { color: var(--muted); line-height: 1.6; }
+
+  @media (max-width: 900px) {
+    .wrap { grid-template-columns: 1fr; }
+    .col-side { position: static; }
+    .chat-list { height: 200px; }
+    .lot-bid .timer { text-align: left; }
+  }
+  @media (max-width: 420px) {
+    .bidbar .btns { grid-template-columns: 1fr 1fr; }
+    .bidbar .direct { grid-column: 1 / -1; }
+    .bidbar .direct input, .bidbar .direct button { padding-top: 10px; padding-bottom: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="error-box" id="errorBox" hidden>
+  <h2>링크를 확인해 주세요</h2>
+  <p id="errorMsg"></p>
+</div>
+
+<div id="app" hidden>
+<header>
+  <div class="my-team"><span id="myName">-</span></div>
+  <span class="badge">팀장</span>
+  <div class="spacer"></div>
+  <span class="conn" id="conn">연결 중…</span>
+</header>
+
+<div class="wrap">
+  <div class="col">
+    <section class="lot" id="lot"></section>
+    <section class="chat" id="chat"></section>
+    <section class="panel mine" id="mine"></section>
+    <section class="panel">
+      <h3>다른 팀</h3>
+      <ul class="others" id="others"></ul>
+    </section>
+    <section class="panel">
+      <h3>다음 순서</h3>
+      <ol class="next-list" id="nextList"></ol>
+    </section>
+  </div>
+  <div class="col col-side" id="side"></div>
+</div>
+
+<div class="bidbar" id="bidbar">
+  <div class="bidbar-in">
+    <div class="info"><span id="barMax"></span><span id="barCur"></span></div>
+    <div class="btns">
+      <div class="direct"><input type="number" inputmode="numeric" id="directInput" placeholder="직접 입력"><button id="directBtn">입찰</button></div>
+    </div>
+    <div class="why" id="why"></div>
+  </div>
+</div>
+</div>
+
+<div class="flash" id="flash"><div class="flash-inner"><div id="flashPhoto"></div><div class="flash-title" id="flashTitle">SOLD</div><div class="flash-sub" id="flashSub"></div></div></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="common.js"></script>
+<script>
+/* =====================================================================
+   팀장 화면 — 자기 팀 입찰 버튼만 있음. 다른 팀으로는 입찰할 수 없음(서버가 열쇠로 확인)
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+let net = null, S = null, ME = null, lastSeq = null, sending = false, chat = null;
+
+function fail(msg) { $("errorBox").hidden = false; $("errorMsg").textContent = msg; }
+
+async function boot() {
+  const { id, key } = linkParams();
+  if (!isConfigured()) return fail("아직 온라인 경매가 설정되지 않았어요. 진행자에게 문의해 주세요.");
+  if (!id || !key) return fail("팀장 전용 링크로 들어와야 해요. 진행자에게 받은 링크를 그대로 열어 주세요.");
+  const sb = window.supabase.createClient(AUCTION_CONFIG.supabaseUrl, AUCTION_CONFIG.supabaseKey, { auth: { persistSession: false } });
+  const { data: who, error } = await sb.rpc("whoami", { p_id: id, p_key: key });
+  if (error) return fail("서버에 연결하지 못했어요. 잠시 뒤 새로고침해 주세요.");
+  if (!who || who.role !== "team") return fail("팀장 링크가 올바르지 않아요. 진행자에게 다시 받아 주세요.");
+  ME = who.team;
+  $("app").hidden = false;
+  placeChat();
+  net = connect({
+    id, key, presenceKey: `team-${ME}`, presenceInfo: { role: "team", team: ME },
+    onState, onChat: msgs => chat && chat.add(msgs), onConn: setConn,
+  });
+  chat = mountChat($("chat"), net, { storeKey: "valo-chat-team", startCollapsed: innerWidth <= 900 });
+  $("chat").addEventListener("chattoggle", measureBar);
+  const input = $("chat");
+  input.addEventListener("focusin", e => { if (e.target.closest(".chat-form")) document.body.classList.add("typing"); });
+  input.addEventListener("focusout", () => setTimeout(() => {
+    if (!document.activeElement || !document.activeElement.closest(".chat-form")) document.body.classList.remove("typing");
+  }, 50));
+}
+
+// 넓은 화면에서는 채팅을 오른쪽 칸에, 폰에서는 선수 카드 바로 아래에
+function placeChat() {
+  const chatEl = $("chat");
+  if (innerWidth > 900) $("side").appendChild(chatEl);
+  else $("lot").after(chatEl);
+}
+addEventListener("resize", () => { placeChat(); measureBar(); });
+function measureBar() { document.documentElement.style.setProperty("--bidbar-h", $("bidbar").offsetHeight + "px"); }
+
+function setConn(status) {
+  const el = $("conn"), on = status === "SUBSCRIBED";
+  el.className = "conn " + (on ? "on" : "off");
+  el.textContent = on ? "실시간 연결됨" : "다시 연결 중…";
+}
+
+function onState(s) {
+  const prev = S;
+  S = s;
+  if (lastSeq === null) lastSeq = s.last_result ? s.last_result.seq : 0;
+  else if (s.last_result && s.last_result.seq > lastSeq) { lastSeq = s.last_result.seq; flashResult(s); }
+  const me = s.teams[ME];
+  document.documentElement.style.setProperty("--c", me.color);
+  $("myName").textContent = me.name;
+  document.title = `${me.name} · 내전 경매`;
+  render(prev);
+  if (prev && s.status === "running" && prev.status === "running" && prev.current === s.current && prev.bid_amount !== s.bid_amount) {
+    bumpEl($("bidAmount"), "bump");
+    const plus = $("timerPlus");
+    if (plus) { plus.textContent = `+${Math.max(0, (s.ends_at - prev.ends_at) / 1000).toFixed(1)}`; bumpEl(plus, "show"); }
+  }
+}
+
+function render(prev) {
+  const s = S, c = s.config, me = s.teams[ME];
+  const p = s.players.find(x => x.id === s.current) || null;
+
+  // 선수 카드
+  if (!p) {
+    const title = { setup: "경매 준비 중", done: "경매가 끝났어요" }[s.status] || "잠시만요";
+    const sub = s.status === "setup" ? "진행자가 경매 순서를 뽑으면 여기에 선수가 올라옵니다." : "";
+    $("lot").innerHTML = `<div class="waiting"><h2>${title}</h2><div>${sub}</div></div>`;
+  } else {
+    const lead = s.bid_team !== null ? s.teams[s.bid_team] : null;
+    const leadHtml = !lead ? "아직 입찰 없음"
+      : lead.idx === ME ? `<span class="mine-lead">우리 팀이 최고가!</span>` : `<span style="color:${esc(lead.color)}">${esc(lead.name)} 최고가</span>`;
+    $("lot").innerHTML = `
+      <div class="card-label">NOW ON AUCTION</div>
+      <div class="p-top">${avatar(p, 96)}<div><div class="p-name">${esc(p.name)}</div><span class="p-pos">${esc(p.pos)}</span></div></div>
+      ${p.motto ? `<div class="p-motto">“${esc(p.motto)}”</div>` : ""}
+      <div class="p-tiers">
+        <div><small>최고 티어</small><b>${esc(p.peak)} <em>${TIER_SCORE[p.peak]}점</em></b></div>
+        <div><small>현재 티어</small><b>${esc(p.current)} <em>${TIER_SCORE[p.current]}점</em></b></div>
+        <div class="score"><small>티어 점수</small><b>${playerScore(p).toFixed(1)}</b></div>
+      </div>
+      ${p.unsold ? `<div class="p-unsold">이미 ${p.unsold}번 유찰 — 이번에도 유찰되면 빈자리 팀에 무작위 배정</div>` : ""}
+      <div class="lot-bid">
+        <div class="bid-now"><small>현재 최고가</small><div class="bid-amount" id="bidAmount">${s.bid_amount}</div><div class="bid-leader">${leadHtml}</div></div>
+        <div class="timer"><small>남은 시간</small><div><span class="timer-num" id="timerNum">-</span><span class="timer-plus" id="timerPlus"></span></div></div>
+      </div>
+      <div class="bar"><i id="timerBar"></i></div>
+      <div class="state-line">${{ ready: "진행자가 시작하면 시간이 흐릅니다.", running: `입찰할 때마다 +${c.bidAddSeconds}초 (최대 ${c.maxSeconds}초)`, paused: "일시정지 중", result: "결과 발표 중…" }[s.status] || ""}</div>`;
+  }
+
+  // 우리 팀
+  const roster = rosterOf(s, ME), { sum, avg } = teamScore(roster), open = c.teamSize - roster.length;
+  const rows = roster.map(r => `<li><span class="who">${avatar(r, 22)}<span>${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
+    r.how === "captain" ? `<span class="pr cap">팀장</span>` : r.how === "random" ? `<span class="pr rnd">무작위</span>` : `<span class="pr">${r.price}P</span>`}</li>`);
+  while (rows.length < c.teamSize) rows.push(`<li class="empty">빈자리</li>`);
+  $("mine").innerHTML = `
+    <div class="row"><h3 style="margin:0">우리 팀</h3><span class="team-slots">빈자리 <b>${open} / ${c.teamSize}</b></span></div>
+    <div class="team-points" id="myPoints">${me.points}<small>P 남음</small></div>
+    <div class="team-max">${open > 0 ? `최대 입찰 가능 <b>${maxBid(s, me)}P</b>${open > 1 ? ` · 빈자리 몫 ${c.reservePerSlot * (open - 1)}P 보관` : ""}` : "팀 완성"}</div>
+    <div class="team-score" style="margin:10px 0"><div><small>티어 점수 합계</small><b>${sum.toFixed(1)}</b></div><div><small>티어 점수 평균</small><b>${avg === null ? "-" : avg.toFixed(1)}</b></div></div>
+    <ul class="roster" style="--c:${esc(me.color)}">${rows.join("")}</ul>`;
+  if (prev && prev.teams[ME].points !== me.points) bumpEl($("myPoints"), "changed");
+
+  // 다른 팀
+  $("others").innerHTML = s.teams.filter(t => t.idx !== ME).map(t => {
+    const o = c.teamSize - rosterOf(s, t.idx).length;
+    return `<li class="${s.bid_team === t.idx && s.status === "running" ? "lead" : ""}"><span class="sw" style="background:${esc(t.color)}"></span><span class="nm">${esc(t.name)}</span><span style="color:var(--muted);font-size:12px">빈자리 ${o}</span><span class="pt">${t.points}P</span></li>`;
+  }).join("");
+
+  // 다음 순서
+  const next = s.queue.slice(0, 6).map(id => s.players.find(x => x.id === id)).filter(Boolean);
+  $("nextList").innerHTML = s.status === "setup" ? `<li><span class="nm" style="color:var(--muted)">순서 추첨 전</span></li>`
+    : next.length ? next.map((q, i) => `<li><span style="color:var(--muted);width:16px">${i + 1}</span>${avatar(q, 22)}<span class="nm">${esc(q.name)}</span><span>${playerScore(q).toFixed(1)}</span></li>`).join("")
+    : `<li><span class="nm" style="color:var(--muted)">남은 선수 없음</span></li>`;
+
+  renderBidbar();
+}
+
+// 입찰 버튼 켜기/끄기 — 다른 팀 버튼은 아예 없음
+function renderBidbar() {
+  const s = S, me = s.teams[ME], open = openSlots(s, ME);
+  let why = null, anyOk = false;
+  document.querySelectorAll(".bidbar .q").forEach(b => {
+    const q = Number(b.dataset.q), amount = s.bid_amount + q;
+    b.innerHTML = `+${q}<small>${amount}P</small>`;
+    const r = bidBlockReason(s, me, amount);
+    b.disabled = !!r || sending;
+    if (!r) anyOk = true; else if (!why) why = r;
+  });
+  const dr = bidBlockReason(s, me, s.bid_amount + s.config.bidStep);
+  $("directBtn").disabled = !!dr || sending;
+  $("directInput").disabled = !!dr;
+  $("directInput").placeholder = dr ? "직접 입력" : `${s.bid_amount + s.config.bidStep}P 이상`;
+  $("barMax").innerHTML = open > 0 ? `최대 입찰 가능 <b>${maxBid(s, me)}P</b>` : "팀 완성";
+  $("barCur").textContent = `남은 포인트 ${me.points}P`;
+  const whyEl = $("why");
+  const leading = s.bid_team === ME && s.status === "running";
+  whyEl.className = "why" + (leading ? " me" : "");
+  whyEl.textContent = leading ? "우리 팀이 최고가예요" : s.status === "running" && !anyOk && why ? `입찰 불가: ${why}` : s.status === "running" ? "" : "진행자가 경매를 시작하면 버튼이 켜져요";
+  measureBar();
+}
+
+async function bid(amount) {
+  if (sending || !S) return;
+  const step = S.config.bidStep;
+  if (!Number.isInteger(amount) || amount % step !== 0) return toast(`${step}P 단위로만 입찰할 수 있어요.`);
+  if (amount < S.bid_amount + step) return toast(`${S.bid_amount + step}P 이상 입찰해야 해요.`);
+  sending = true; $("bidbar").classList.add("sending"); renderBidbar();
+  const r = await net.act("place_bid", { p_amount: amount });
+  sending = false; $("bidbar").classList.remove("sending");
+  if (r && !r.ok) toast(r.reason);
+  if (S) renderBidbar();
+}
+// 빠른 입찰 버튼은 common.js 의 CONFIG.quickBids 대로 만듦
+$("directBtn").parentElement.insertAdjacentHTML("beforebegin", CONFIG.quickBids.map(q => `<button class="q" data-q="${q}">+${q}</button>`).join(""));
+document.querySelectorAll(".bidbar .q").forEach(b => b.addEventListener("click", () => S && bid(S.bid_amount + Number(b.dataset.q))));
+function sendDirect() { const v = Number($("directInput").value); if (!v) return; $("directInput").value = ""; bid(v); }
+$("directBtn").addEventListener("click", sendDirect);
+$("directInput").addEventListener("keydown", e => { if (e.key === "Enter") sendDirect(); });
+
+function renderTimer() {
+  if (S && net) {
+    const left = timeLeftMs(S, net.serverNow()), num = $("timerNum");
+    if (num) {
+      num.textContent = ["done", "result", "setup"].includes(S.status) ? "-" : (left / 1000).toFixed(1);
+      num.classList.toggle("low", S.status === "running" && left < 5000);
+      $("timerBar").style.width = `${Math.min(100, left / (S.config.maxSeconds * 1000) * 100)}%`;
+    }
+  }
+  requestAnimationFrame(renderTimer);
+}
+requestAnimationFrame(renderTimer);
+
+boot();
+</script>
+</body>
+</html>
