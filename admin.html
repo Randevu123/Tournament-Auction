@@ -574,6 +574,7 @@ function renderPrep() {
         <span class="big-state" style="font-size:22px">${esc(detail.host.name || "아직 없음")}</span>
         <span style="color:var(--muted);font-size:13px">경매 상태: ${STATUS_LABEL[st.status] || st.status}</span>
         ${L ? `<a class="btn" target="_blank" href="${esc(pageLink("index.html", { a: e.id, k: L.host_key }))}" style="text-decoration:none">진행자 화면 열기</a>` : ""}
+        ${L && L.screen_key ? `<a class="btn" target="_blank" href="${esc(pageLink("screen.html", { a: e.id, k: L.screen_key }))}" style="text-decoration:none">방송 화면 열기</a>` : ""}
       </div>
       ${can ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select id="hostTo">${members.map(m => `<option value="${m.user_id}" ${m.user_id === detail.host.user_id ? "selected" : ""}>${esc(m.name)}${m.role === "owner" ? " (제작자)" : ""}</option>`).join("")}</select>
         <button class="btn" id="btnHostTo">진행자 넘기기</button><span style="color:var(--muted);font-size:12px">진행자와 제작자만 경매 준비·회차 지우기·진행자 넘기기를 할 수 있어요.</span></div>`
@@ -893,6 +894,8 @@ function renderLinks() {
   let html = `<div class="card"><h3>참가 신청 (디스코드 서버에 올리기)</h3>${linkRow("참가 신청 링크", pageLink("signup.html", { s: e.signup_code }), "#5865f2")}</div>`;
   if (L) {
     html += `<div class="card"><h3>경매 당일 (이 회차 진행자·제작자만 보여요)</h3>${linkRow("진행자 화면", pageLink("index.html", { a: e.id, k: L.host_key }), "var(--accent)")}
+      ${L.screen_key ? `${linkRow("방송 화면 (OBS)", pageLink("screen.html", { a: e.id, k: L.screen_key }), "var(--gold)")}<div style="color:var(--muted);font-size:12px">방송 화면은 보기만 되는 링크예요. OBS에서 ‘소스 추가 → 브라우저’에 붙여 넣고 너비 1920, 높이 1080으로 두세요.</div>`
+        : `<div style="color:var(--warn);font-size:12px">방송 화면 링크를 만들려면 setup.sql을 한 번 더 실행해 주세요.</div>`}
       ${L.team_keys.map((k, i) => linkRow(`${i + 1}번 팀장`, pageLink("team.html", { a: e.id, k }), CONFIG.teamColors[i % CONFIG.teamColors.length])).join("")}
       <div style="color:var(--muted);font-size:12px">팀장 링크의 팀 이름은 경매 화면에서 팀장이 정해지면 바뀌어요.</div></div>`;
   } else html += `<div class="card"><h3>경매 당일</h3><div style="color:var(--muted)">진행자 화면과 팀장 링크는 이 회차의 진행자와 제작자만 볼 수 있어요.</div></div>`;

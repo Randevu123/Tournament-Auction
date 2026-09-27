@@ -179,7 +179,7 @@ function isConfigured() {
    - 조작(입찰, 시작 등)은 서버 함수로 보내고, 서버가 순서대로 하나씩 처리합니다.
    - 처리 뒤 "바뀌었어요" 신호를 실시간 채널로 보내면, 다른 화면이 새 상태를 받아 옵니다.
    - 신호를 놓쳐도 4초마다 한 번씩 스스로 확인하므로, 새로고침·끊김 뒤에도 따라잡습니다. */
-function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresence, onConn }) {
+function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresence, onConn, chat = true }) {
   const cfg = window.AUCTION_CONFIG;
   const sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -253,6 +253,7 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresen
     onChat(fresh.sort((a, b) => a.id - b.id));
   }
   async function refreshChat() {
+    if (!chat) return;                         // 방송 화면은 채팅을 읽지 않음
     try { addChat(await rpc("get_chat", { p_id: id, p_key: key, p_after: Math.max(0, maxChat - 30) })); } catch (e) { /* 다음에 */ }
   }
   async function sendChat(body) {
@@ -266,7 +267,7 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresen
 
   channel
     .on("broadcast", { event: "changed" }, ({ payload }) => { if (!payload || payload.v > version) refresh(); })
-    .on("broadcast", { event: "chat" }, ({ payload }) => addChat([payload]))
+    .on("broadcast", { event: "chat" }, ({ payload }) => chat && addChat([payload]))
     .on("presence", { event: "sync" }, () => onPresence && onPresence(channel.presenceState()))
     .subscribe(status => {
       onConn && onConn(status);
@@ -378,7 +379,7 @@ function resultRanks(state) {
   teams.forEach(x => { rank[x.team.idx] = sums.indexOf(round1(x.sum)) + 1; });   // 합계가 같으면 같은 순위
   return rank;
 }
-function resultHtml(state, { reveal = false } = {}) {
+function resultHtml(state, { reveal = false, discord = true } = {}) {
   const teams = resultTeams(state), rank = resultRanks(state);
   const left = state.players.filter(p => p.team === null);
   return `<div class="result-grid ${reveal ? "reveal" : ""}">${teams.map(({ team: t, roster, start, sum, avg }) => `
@@ -387,7 +388,7 @@ function resultHtml(state, { reveal = false } = {}) {
         <div class="rt-head"><b>${esc(t.name)}</b><span class="rt-rank">점수 합계 ${rank[t.idx]}위</span><span>${roster.length}명</span></div>
         <div class="rt-nums"><div><small>남은 포인트</small><b>${t.points}P</b></div><div><small>시작</small><b>${start}P</b></div><div><small>점수 합계</small><b>${sum.toFixed(1)}</b></div><div><small>평균</small><b>${avg === null ? "-" : avg.toFixed(1)}</b></div></div>
         <table class="rt-table"><tbody>${roster.map(p => `<tr class="${p.how === "random" ? "rnd" : ""}">
-          <td>${avatar(p, 22)}</td><td><b>${esc(p.name)}</b>${p.discord ? `<small>${esc(p.discord)}</small>` : ""}</td>
+          <td>${avatar(p, 22)}</td><td><b>${esc(p.name)}</b>${discord && p.discord ? `<small>${esc(p.discord)}</small>` : ""}</td>
           <td>${esc(p.pos)}</td><td class="sc">${playerScore(p).toFixed(1)}</td>
           <td class="pr">${p.how === "captain" ? "팀장" : p.how === "random" ? "무작위" : `${p.price}P`}</td></tr>`).join("")}</tbody></table>
       </div>`).join("")}</div>

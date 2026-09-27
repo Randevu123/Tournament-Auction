@@ -30,9 +30,13 @@ create table if not exists public.auctions (
 create table if not exists public.auction_keys (
   key        text primary key,
   auction_id uuid not null references public.auctions on delete cascade,
-  role       text not null,          -- host / team
+  role       text not null,          -- host / team / screen(방송 화면: 보기만)
   team_idx   int
 );
+-- 7단계 전에 만든 회차에도 방송 화면 열쇠를 하나씩 만들어 둠
+insert into public.auction_keys (key, auction_id, role)
+  select replace(gen_random_uuid()::text, '-', ''), a.id, 'screen' from public.auctions a
+  where not exists (select 1 from public.auction_keys k where k.auction_id = a.id and k.role = 'screen');
 
 create table if not exists public.teams (
   auction_id uuid not null references public.auctions on delete cascade,
@@ -408,6 +412,7 @@ begin
   perform _load_players(v_id, p_players);
   v_host := replace(gen_random_uuid()::text, '-', '');
   insert into auction_keys (key, auction_id, role) values (v_host, v_id, 'host');
+  insert into auction_keys (key, auction_id, role) values (replace(gen_random_uuid()::text, '-', ''), v_id, 'screen');
   for i in 0 .. (p_config ->> 'teamCount')::int - 1 loop
     v_k := replace(gen_random_uuid()::text, '-', '');
     insert into auction_keys (key, auction_id, role, team_idx) values (v_k, v_id, 'team', i);
@@ -431,7 +436,8 @@ begin
   if (select role from _auth(p_id, p_key)) is distinct from 'host' then return null; end if;
   return jsonb_build_object(
     'teams', (select jsonb_agg(key order by team_idx) from auction_keys where auction_id = p_id and role = 'team'),
-    'signup_code', (select signup_code from auctions where id = p_id));
+    'signup_code', (select signup_code from auctions where id = p_id),
+    'screen', (select key from auction_keys where auction_id = p_id and role = 'screen' limit 1));
 end $$;
 
 create or replace function public.get_state(p_id uuid, p_key text) returns jsonb
@@ -451,7 +457,8 @@ end $$;
 create or replace function public.get_chat(p_id uuid, p_key text, p_after bigint default 0) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 begin
-  if (select role from _auth(p_id, p_key)) is null then return null; end if;
+  -- 채팅은 진행자와 팀장끼리만 (방송 화면 열쇠로는 못 읽음)
+  if (select role from _auth(p_id, p_key)) is distinct from 'host' and (select role from _auth(p_id, p_key)) is distinct from 'team' then return null; end if;
   return (select coalesce(jsonb_agg(jsonb_build_object('id', c.id, 'sender', c.sender, 'color', c.color, 'body', c.body,
             'at', (extract(epoch from c.created_at) * 1000)::bigint) order by c.id), '[]')
           from (select * from chat where auction_id = p_id and id > coalesce(p_after, 0) order by id desc limit 100) c);
@@ -462,7 +469,7 @@ language plpgsql security definer set search_path = public as $$
 declare w record; v_body text := left(trim(coalesce(p_body, '')), 200); v_name text; v_color text; v_row chat;
 begin
   select * into w from _auth(p_id, p_key);
-  if w.role is null then return jsonb_build_object('ok', false, 'reason', '링크가 올바르지 않아요.'); end if;
+  if w.role is null or w.role not in ('host', 'team') then return jsonb_build_object('ok', false, 'reason', '링크가 올바르지 않아요.'); end if;
   if v_body = '' then return jsonb_build_object('ok', false, 'reason', '빈 메시지는 보낼 수 없어요.'); end if;
   if w.role = 'host' then v_name := '진행자'; v_color := '#ffffff';
   else select name, color into v_name, v_color from teams where auction_id = p_id and idx = w.team_idx; end if;
@@ -1010,6 +1017,7 @@ begin
   select * into d from _discord_of(auth.uid());
   insert into auctions (config, title, signup_mode, host_user) values (p_config, left(coalesce(trim(p_title), ''), 60), 'closed', auth.uid()) returning id into v_id;
   insert into auction_keys (key, auction_id, role) values (replace(gen_random_uuid()::text, '-', ''), v_id, 'host');
+  insert into auction_keys (key, auction_id, role) values (replace(gen_random_uuid()::text, '-', ''), v_id, 'screen');
   for i in 0 .. (p_config ->> 'teamCount')::int - 1 loop
     insert into auction_keys (key, auction_id, role, team_idx) values (replace(gen_random_uuid()::text, '-', ''), v_id, 'team', i);
   end loop;
@@ -1080,7 +1088,8 @@ begin
     'state', _state(a.id),
     'links', case when _can_host(a.id) then jsonb_build_object(
         'host_key', (select key from auction_keys where auction_id = a.id and role = 'host'),
-        'team_keys', (select jsonb_agg(key order by team_idx) from auction_keys where auction_id = a.id and role = 'team')) end);
+        'team_keys', (select jsonb_agg(key order by team_idx) from auction_keys where auction_id = a.id and role = 'team'),
+        'screen_key', (select key from auction_keys where auction_id = a.id and role = 'screen' limit 1)) end);
 end $$;
 
 -- 신청 고치기: 닉네임·티어·포지션·메모·팀장. 티어를 고치면 그 사람의 검수는 처음부터 다시
