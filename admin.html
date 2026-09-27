@@ -516,7 +516,32 @@ function logItems(list, showEvent, scope) {
 }
 function logToolbar() {
   return `<div class="toolbar"><input id="logSearch" placeholder="사람·내용으로 찾기 (예: 티어, 닉네임)" value="${esc(logSearch)}" style="min-width:260px">
-    <span style="color:var(--muted);font-size:12px">최근 기록부터 보여요. 기록은 고치거나 지울 수 없어요.</span></div>`;
+    <button class="btn" id="btnLogCsv" type="button">CSV로 내려받기</button>
+    <span style="color:var(--muted);font-size:12px">최근 기록부터 보여요. 기록은 고치거나 지울 수 없어요. 내려받은 파일은 엑셀·구글 시트에서 열 수 있어요.</span></div>`;
+}
+
+// 진행 기록을 CSV 파일로 내려받기 (엑셀에서 한글이 깨지지 않게 BOM을 붙임)
+const CSV_MAX = 1000;     // 서버가 한 번에 주는 최대 개수
+async function downloadLogCsv(scope) {
+  const btn = $("btnLogCsv"); if (btn) { btn.disabled = true; btn.textContent = "만드는 중…"; }
+  const list = await call("get_log", { p_id: scope === "site" ? null : scope, p_limit: CSV_MAX });
+  if (btn) { btn.disabled = false; btn.textContent = "CSV로 내려받기"; }
+  if (!Array.isArray(list)) return toast("기록을 불러오지 못했어요.");
+  if (!list.length) return toast("내려받을 기록이 없어요.");
+  const cell = v => { const t = String(v ?? ""); return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+  const pad = n => String(n).padStart(2, "0");
+  const stamp = ms => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+  const rows = [["시각", "회차", "한 사람", "한 일", "내용"]]
+    .concat(list.slice().reverse().map(l => [stamp(l.at), l.event || (scope === "site" ? "사이트 전체" : (detail && detail.event.title) || ""), l.who, l.action, l.detail]));
+  const csv = "\uFEFF" + rows.map(r => r.map(cell).join(",")).join("\r\n");
+  // 파일 이름은 영문으로 (한글 파일 이름을 "download"로 바꿔 버리는 브라우저가 있음). 내용은 한글 그대로
+  const d = new Date();
+  const name = `auction-log_${scope === "site" ? "all" : "round"}_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.csv`;
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a"); a.href = url; a.download = name; a.style.display = "none";
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 4000);   // 바로 지우면 파일 이름을 못 읽는 브라우저가 있음
+  toast(list.length >= CSV_MAX ? `최근 ${CSV_MAX}개 기록을 내려받았어요.` : `기록 ${list.length}개를 내려받았어요.`);
 }
 function bindLogSearch(rerender) {
   $("logSearch").oninput = ev => { logSearch = ev.target.value; const pos = ev.target.selectionStart; rerender(); const f = $("logSearch"); f.focus(); f.setSelectionRange(pos, pos); };
@@ -524,6 +549,7 @@ function bindLogSearch(rerender) {
 function renderLog() {
   $("tabBody").innerHTML = logToolbar() + `<ul class="log-list">${logItems(logs, false, selected)}</ul>`;
   bindLogSearch(renderLog);
+  $("btnLogCsv").onclick = () => downloadLogCsv(selected);
 }
 
 /* ---------- 링크 ---------- */
@@ -569,6 +595,7 @@ async function renderStaff() {
       <ul class="people">${active.map(m => person(m, m.role === "owner" ? `<span class="role owner">진행자</span>` : owner ? `<span class="role staff">운영진</span><button class="btn" data-dec="remove" data-u="${m.user_id}">빼기</button>` : `<span class="role staff">운영진</span>`)).join("")}</ul></div>
     <div class="card"><h3>전체 진행 기록 (모든 회차 + 운영진 승인 등)</h3>${logToolbar()}<ul class="log-list" id="siteLog">${logItems(logs, true, "site")}</ul></div>`;
   bindLogSearch(() => { $("siteLog").innerHTML = logItems(logs, true, "site"); });
+  $("btnLogCsv").onclick = () => downloadLogCsv("site");
   $("view").onclick = async ev => {
     if (ev.target.matches("[data-copy]")) return copyBtn(ev);
     const b = ev.target.closest("[data-dec]");
