@@ -180,6 +180,8 @@ function onState(s) {
   S = s;
   if (lastSeq === null) lastSeq = s.last_result ? s.last_result.seq : 0;
   else if (s.last_result && s.last_result.seq > lastSeq) { lastSeq = s.last_result.seq; flashResult(s); }
+  setScoreConfig(s.config);
+  buildQuickBids(s.config.bidStep);
   const me = s.teams[ME];
   document.documentElement.style.setProperty("--c", me.color);
   $("myName").textContent = me.name;
@@ -210,8 +212,8 @@ function render(prev) {
       <div class="p-top">${avatar(p, 96)}<div><div class="p-name">${esc(p.name)}</div><span class="p-pos">${esc(p.pos)}</span></div></div>
       ${p.motto ? `<div class="p-motto">“${esc(p.motto)}”</div>` : ""}
       <div class="p-tiers">
-        <div><small>최고 티어</small><b>${esc(p.peak)} <em>${TIER_SCORE[p.peak]}점</em></b></div>
-        <div><small>현재 티어</small><b>${esc(p.current)} <em>${TIER_SCORE[p.current]}점</em></b></div>
+        <div><small>최고 티어</small><b>${esc(p.peak)} <em>${tierPoints(p.peak)}점</em></b></div>
+        <div><small>현재 티어</small><b>${esc(p.current)} <em>${tierPoints(p.current)}점</em></b></div>
         <div class="score"><small>티어 점수</small><b>${playerScore(p).toFixed(1)}</b></div>
       </div>
       ${p.unsold ? `<div class="p-unsold">이미 ${p.unsold}번 유찰 — 이번에도 유찰되면 빈자리 팀에 무작위 배정</div>` : ""}
@@ -286,9 +288,15 @@ async function bid(amount) {
   if (r && !r.ok) toast(r.reason);
   if (S) renderBidbar();
 }
-// 빠른 입찰 버튼은 common.js 의 CONFIG.quickBids 대로 만듦
-$("directBtn").parentElement.insertAdjacentHTML("beforebegin", CONFIG.quickBids.map(q => `<button class="q" data-q="${q}">+${q}</button>`).join(""));
-document.querySelectorAll(".bidbar .q").forEach(b => b.addEventListener("click", () => S && bid(S.bid_amount + Number(b.dataset.q))));
+// 빠른 입찰 버튼 = 입찰 단위의 배수 (CONFIG.quickBids). 진행자가 입찰 단위를 바꾸면 버튼도 바뀜
+let quickStep = null;
+function buildQuickBids(step) {
+  if (step === quickStep) return;
+  quickStep = step;
+  document.querySelectorAll(".bidbar .q").forEach(b => b.remove());
+  $("directBtn").parentElement.insertAdjacentHTML("beforebegin", CONFIG.quickBids.map(m => `<button class="q" data-q="${m * step}">+${m * step}</button>`).join(""));
+  document.querySelectorAll(".bidbar .q").forEach(b => b.addEventListener("click", () => S && bid(S.bid_amount + Number(b.dataset.q))));
+}
 function sendDirect() { const v = Number($("directInput").value); if (!v) return; $("directInput").value = ""; bid(v); }
 $("directBtn").addEventListener("click", sendDirect);
 $("directInput").addEventListener("keydown", e => { if (e.key === "Enter") sendDirect(); });

@@ -153,7 +153,9 @@
     <div class="field"><label>최고 티어</label><select id="ePeak"></select></div>
     <div class="field"><label>현재 티어</label><select id="eCur"></select></div>
     <div class="field"><label>포지션</label><select id="ePos"></select></div>
+    <div class="field"><label>점수 직접 입력 (비우면 자동)</label><input id="eScore" type="number" step="0.1" min="0" max="1000" placeholder="자동"></div>
   </div>
+  <div class="calc" id="eCalc"></div>
   <div class="field"><label>운영진 메모 (참가자에게는 안 보여요)</label><textarea id="eMemo" maxlength="200"></textarea></div>
   <div class="warn-note">티어를 바꾸면 이 사람의 티어 검수와 점수 재확인이 처음부터 다시 시작돼요.</div>
   <div class="row"><button class="btn" data-close>닫기</button><button class="btn primary" id="btnEditSave">저장</button></div>
@@ -306,7 +308,7 @@ function render() {
     <li class="${e.id === selected && view === "event" ? "on" : ""}" data-ev="${e.id}">
       <div class="t">${esc(e.title || "이름 없는 회차")}</div>
       <div class="m"><span class="chip ${e.open ? "open" : "closed"}">${e.open ? "신청 받는 중" : "신청 닫힘"}</span><span>경매 ${fmt(e.auction_at)}</span></div>
-      <div class="m"><span>신청 ${e.signups}명</span><span>팀장 ${e.captains}/${e.team_count}</span>${e.tasks_open ? `<span>할 일 ${e.tasks_open}</span>` : ""}</div>
+      <div class="m"><span>신청 ${e.signups}명</span><span>팀장 ${e.captains}명</span>${e.tasks_open ? `<span>할 일 ${e.tasks_open}</span>` : ""}</div>
     </li>`).join("") : `<li style="cursor:default;color:var(--muted)">아직 회차가 없어요. ‘새 회차 만들기’를 눌러 주세요.</li>`;
   if (view === "staff") return renderStaff();
   if (!detail) { $("view").innerHTML = `<div class="empty-view">왼쪽에서 회차를 고르거나 새로 만들어 주세요.</div>`; return; }
@@ -319,6 +321,7 @@ function isDone(s, kind) { return checksOf(s, kind).length >= NEED_CHECKS; }
 
 function renderEvent() {
   const e = detail.event, S = detail.signups, T = detail.tasks;
+  setScoreConfig(e.config);
   const caps = S.filter(s => s.captain).length;
   const tierDone = S.filter(s => isDone(s, "tier")).length, scoreDone = S.filter(s => isDone(s, "score")).length;
   const openTasks = T.filter(t => !t.done).length;
@@ -330,7 +333,7 @@ function renderEvent() {
     </div>
     <div class="stats">
       <div class="stat"><small>신청</small><b>${S.length}<em>명</em></b></div>
-      <div class="stat"><small>팀장 배정</small><b>${caps}<em> / ${e.team_count}</em></b></div>
+      <div class="stat"><small>팀장 배정</small><b>${caps}<em>명</em></b></div>
       <div class="stat"><small>티어 검수 완료</small><b>${tierDone}<em> / ${S.length}</em></b></div>
       <div class="stat"><small>점수 재확인 완료</small><b>${scoreDone}<em> / ${S.length}</em></b></div>
       <div class="stat"><small>남은 할 일</small><b>${openTasks}<em>개</em></b></div>
@@ -366,7 +369,8 @@ function renderPeople() {
       <select id="fFilter">
         ${[["all", "전체"], ["todo", "검수 덜 된 사람"], ["done", "검수 끝난 사람"], ["captain", "팀장만"]].map(([k, l]) => `<option value="${k}" ${filter === k ? "selected" : ""}>${l}</option>`).join("")}
       </select>
-      <span style="color:var(--muted);font-size:12px">검수는 서로 다른 운영진 ${NEED_CHECKS}명이 ‘확인’을 눌러야 완료돼요. ★ = 팀장 (최대 ${e.team_count}명)</span>
+      <button class="btn" id="btnPeopleCsv" type="button">명단 CSV로 내려받기</button>
+      <span style="color:var(--muted);font-size:12px">검수는 서로 다른 운영진 ${NEED_CHECKS}명이 ‘확인’을 눌러야 완료돼요. ★ = 팀장 (팀 수 = 팀장 수, 최대 8명)</span>
     </div>
     <div class="table-wrap"><table class="grid">
       <thead><tr><th>팀장</th><th>#</th><th>디스코드</th><th>게임 닉네임</th><th>최고 티어</th><th>현재 티어</th><th>포지션</th><th>점수</th><th>티어 검수</th><th>점수 계산 재확인</th><th>메모</th><th></th></tr></thead>
@@ -377,15 +381,16 @@ function renderPeople() {
           <td><div class="dc">${discordImg(s.discord_avatar, s.discord_name, 26)}<div><b>${esc(s.discord_name)}</b>${s.discord_username ? `<small>@${esc(s.discord_username)}</small>` : ""}</div></div></td>
           <td><b>${esc(s.nick)}</b>${s.updated_by ? `<div class="calc">${esc(s.updated_by)} 님이 고침</div>` : ""}</td>
           <td>${esc(s.peak)}</td><td>${esc(s.current)}</td><td>${esc(s.pos)}</td>
-          <td><span class="score">${playerScore(s).toFixed(1)}</span></td>
+          <td><span class="score">${playerScore(s).toFixed(1)}</span>${s.score != null ? `<div class="calc">직접 정함</div>` : ""}</td>
           <td>${checkCell(s, "tier")}</td>
-          <td><div class="calc">(${TIER_SCORE[s.peak]} + ${TIER_SCORE[s.current]}) ÷ 2 = ${playerScore(s).toFixed(1)}</div>${checkCell(s, "score")}</td>
+          <td><div class="calc">${scoreFormula(s)}${s.score != null ? ` → 직접 정한 점수 <b style="color:var(--gold)">${Number(s.score).toFixed(1)}</b>` : ""}</div>${checkCell(s, "score")}</td>
           <td><div class="memo ${s.memo ? "" : "empty"}" data-edit="${s.id}" title="${esc(s.memo)}">${s.memo ? esc(s.memo) : "메모 쓰기"}</div></td>
           <td><div class="acts"><button data-edit="${s.id}">고치기</button><button class="del" data-del="${s.id}">지우기</button></div></td>
         </tr>`).join("") : `<tr><td colspan="12" class="empty-view" style="padding:30px">조건에 맞는 신청이 없어요.</td></tr>`}</tbody>
     </table></div>`;
   $("fSearch").oninput = ev => { search = ev.target.value; const pos = ev.target.selectionStart; renderPeople(); const f = $("fSearch"); f.focus(); f.setSelectionRange(pos, pos); };
   $("fFilter").onchange = ev => { filter = ev.target.value; renderPeople(); };
+  $("btnPeopleCsv").onclick = downloadPeopleCsv;
   const body = $("tabBody");
   body.onclick = async ev => {
     const t = ev.target.closest("button, [data-edit]"); if (!t) return;
@@ -408,10 +413,19 @@ function openEdit(id) {
   editing = s;
   $("editWho").innerHTML = `${discordImg(s.discord_avatar, s.discord_name, 26)}<div><b>${esc(s.discord_name)}</b>${s.discord_username ? `<small>@${esc(s.discord_username)}</small>` : ""}</div>`;
   $("eNick").value = s.nick; $("ePeak").value = s.peak; $("eCur").value = s.current; $("ePos").value = s.pos; $("eMemo").value = s.memo || "";
+  $("eScore").value = s.score != null ? s.score : "";
+  updateEditCalc();
   $("editModal").classList.add("show");
 }
+function updateEditCalc() {
+  const auto = scoreFormula({ peak: $("ePeak").value, current: $("eCur").value });
+  $("eCalc").innerHTML = `자동 점수: ${auto}${$("eScore").value !== "" ? ` → 직접 정한 점수 <b style="color:var(--gold)">${Number($("eScore").value).toFixed(1)}</b>를 씁니다 (부계정 등)` : ""}`;
+}
+["ePeak", "eCur", "eScore"].forEach(id => $(id).addEventListener("input", updateEditCalc));
 $("btnEditSave").onclick = async () => {
-  const r = await mutate("signup_update", { p_signup: editing.id, p_patch: { nick: $("eNick").value, peak: $("ePeak").value, current: $("eCur").value, pos: $("ePos").value, memo: $("eMemo").value } });
+  const sc = $("eScore").value.trim();
+  if (sc !== "" && !(Number(sc) >= 0 && Number(sc) <= 1000)) return toast("점수는 0에서 1000 사이로 적어 주세요.");
+  const r = await mutate("signup_update", { p_signup: editing.id, p_patch: { nick: $("eNick").value, peak: $("ePeak").value, current: $("eCur").value, pos: $("ePos").value, memo: $("eMemo").value, score: sc === "" ? null : Number(sc) } });
   if (r && r.ok) $("editModal").classList.remove("show");
 };
 
@@ -528,20 +542,39 @@ async function downloadLogCsv(scope) {
   if (btn) { btn.disabled = false; btn.textContent = "CSV로 내려받기"; }
   if (!Array.isArray(list)) return toast("기록을 불러오지 못했어요.");
   if (!list.length) return toast("내려받을 기록이 없어요.");
-  const cell = v => { const t = String(v ?? ""); return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
-  const pad = n => String(n).padStart(2, "0");
-  const stamp = ms => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
   const rows = [["시각", "회차", "한 사람", "한 일", "내용"]]
-    .concat(list.slice().reverse().map(l => [stamp(l.at), l.event || (scope === "site" ? "사이트 전체" : (detail && detail.event.title) || ""), l.who, l.action, l.detail]));
+    .concat(list.slice().reverse().map(l => [csvStamp(l.at), l.event || (scope === "site" ? "사이트 전체" : (detail && detail.event.title) || ""), l.who, l.action, l.detail]));
+  saveCsv(rows, `auction-log_${scope === "site" ? "all" : "round"}`);
+  toast(list.length >= CSV_MAX ? `최근 ${CSV_MAX}개 기록을 내려받았어요.` : `기록 ${list.length}개를 내려받았어요.`);
+}
+
+// 참가자 명단을 CSV로 (시트에서 포인트 계산할 때 쓰기 좋게)
+function downloadPeopleCsv() {
+  if (!detail || !detail.signups.length) return toast("내려받을 신청이 없어요.");
+  const names = (x, kind) => checksOf(x, kind).map(c => c.name).join(" / ");
+  const rows = [["번호", "게임 닉네임", "디스코드 이름", "디스코드 아이디", "최고 티어", "현재 티어", "포지션",
+                 "티어 점수(최종)", "자동 점수", "직접 정한 점수", "팀장", "티어 검수", "티어 검수한 사람", "점수 재확인", "점수 재확인한 사람", "메모", "신청 시각"]]
+    .concat(detail.signups.map((x, i) => [i + 1, x.nick, x.discord_name, x.discord_username ? "@" + x.discord_username : "", x.peak, x.current, x.pos,
+      playerScore(x).toFixed(1), autoScore(x).toFixed(1), x.score != null ? Number(x.score).toFixed(1) : "", x.captain ? "팀장" : "",
+      `${checksOf(x, "tier").length}/${NEED_CHECKS}${isDone(x, "tier") ? " 완료" : ""}`, names(x, "tier"),
+      `${checksOf(x, "score").length}/${NEED_CHECKS}${isDone(x, "score") ? " 완료" : ""}`, names(x, "score"), x.memo || "", csvStamp(x.at)]));
+  saveCsv(rows, "signups");
+  toast(`신청 ${detail.signups.length}명을 내려받았어요.`);
+}
+
+// CSV 공통: 엑셀 한글 깨짐 방지(BOM), 쉼표·따옴표·줄바꿈이 든 칸은 따옴표로 감쌈
+const csvPad = n => String(n).padStart(2, "0");
+function csvStamp(ms) { if (!ms) return ""; const d = new Date(ms); return `${d.getFullYear()}-${csvPad(d.getMonth() + 1)}-${csvPad(d.getDate())} ${csvPad(d.getHours())}:${csvPad(d.getMinutes())}:${csvPad(d.getSeconds())}`; }
+function saveCsv(rows, prefix) {
+  const cell = v => { const t = String(v ?? ""); return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
   const csv = "\uFEFF" + rows.map(r => r.map(cell).join(",")).join("\r\n");
   // 파일 이름은 영문으로 (한글 파일 이름을 "download"로 바꿔 버리는 브라우저가 있음). 내용은 한글 그대로
   const d = new Date();
-  const name = `auction-log_${scope === "site" ? "all" : "round"}_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.csv`;
+  const name = `${prefix}_${d.getFullYear()}${csvPad(d.getMonth() + 1)}${csvPad(d.getDate())}-${csvPad(d.getHours())}${csvPad(d.getMinutes())}.csv`;
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
   const a = document.createElement("a"); a.href = url; a.download = name; a.style.display = "none";
   document.body.appendChild(a); a.click();
   setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 4000);   // 바로 지우면 파일 이름을 못 읽는 브라우저가 있음
-  toast(list.length >= CSV_MAX ? `최근 ${CSV_MAX}개 기록을 내려받았어요.` : `기록 ${list.length}개를 내려받았어요.`);
 }
 function bindLogSearch(rerender) {
   $("logSearch").oninput = ev => { logSearch = ev.target.value; const pos = ev.target.selectionStart; rerender(); const f = $("logSearch"); f.focus(); f.setSelectionRange(pos, pos); };

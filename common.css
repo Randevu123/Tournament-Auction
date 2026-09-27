@@ -303,3 +303,36 @@
 .signup-table .tm { color: var(--muted); font-size: 12px; }
 .signup-table tr.fresh td { animation: freshrow 2.4s ease; }
 @keyframes freshrow { 0% { background: rgba(88,101,242,.45); } 100% { background: transparent; } }
+
+/* =====================================================================
+   4단계: 신청 명단으로 경매 준비 · 경매 설정 · 점수 고치기 · 순서 정하기
+   ===================================================================== */
+.setup-box .steps { text-align: left; color: var(--muted); margin: 0; padding-left: 22px; display: grid; gap: 4px; font-size: 14px; }
+.setup-box .steps b { color: var(--text); }
+.prep-bar { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; font-size: 14px; line-height: 1.6; }
+.prep-bar b { font-family: var(--num); font-weight: 400; font-size: 18px; color: var(--gold); }
+.prep-bar .warn { color: var(--warn); }
+.signup-table tr.excluded td { opacity: .4; }
+.signup-table tr.cap td { background: rgba(255,209,102,.07); }
+.signup-table .star { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 8px; min-width: 40px; height: 30px; font-weight: 900; }
+.signup-table .star.on { color: #1a1400; background: var(--gold); border-color: var(--gold); }
+.signup-table input[type=number], .signup-table select { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; width: 90px; font-size: 13px; }
+.signup-table select { width: auto; }
+.signup-table .over { color: var(--gold); font-size: 11px; display: block; }
+.set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.set-grid label, .weight label { display: grid; gap: 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.set-grid input { width: 100%; min-width: 0; }
+.set-grid input, .tier-grid input { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font-size: 15px; }
+.set-grid input:disabled { opacity: .45; }
+.set-h { margin: 6px 0 0; font-size: 13px; letter-spacing: 2px; color: var(--muted); }
+.weight { display: grid; gap: 6px; }
+.weight b { color: var(--gold); }
+.weight input[type=range] { width: 100%; accent-color: var(--accent); }
+.tier-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.tier-grid label { display: flex; align-items: center; justify-content: space-between; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+.tier-grid input { width: 64px; padding: 5px 6px; font-size: 14px; text-align: right; }
+.order-edit { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 60vh; overflow: auto; }
+.order-edit li { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; }
+.order-edit li .no { font-family: var(--num); color: var(--accent); width: 28px; font-size: 18px; }
+.order-edit li .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.order-edit li button { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; width: 34px; height: 30px; }

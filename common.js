@@ -8,7 +8,7 @@ const CONFIG = {
   teamCount: 5,          // 팀 수 (= 팀장 수)
   startPoints: 1000,     // 팀 시작 포인트
   bidStep: 5,            // 최소 입찰 단위 (직접 입력도 이 단위로만 가능)
-  quickBids: [5, 10],    // 팀장 화면의 빠른 입찰 버튼 (+5, +10)
+  quickBids: [1, 2],     // 팀장 화면의 빠른 입찰 버튼: 입찰 단위의 1배, 2배 (단위 5면 +5, +10)
   teamSize: 5,           // 한 팀 인원 (팀장 포함)
   reservePerSlot: 5,     // 빈자리 1칸당 남겨 둬야 하는 최소 포인트
   startSeconds: 15,      // 선수 한 명당 처음 주어지는 시간(초)
@@ -16,6 +16,7 @@ const CONFIG = {
   maxSeconds: 30,        // 남은 시간 최대치(초)
   maxUnsold: 2,          // 이 횟수만큼 유찰되면 빈자리 팀에 무작위 배정
   resultShowMs: 2200,    // 낙찰/유찰 화면을 보여 주는 시간(밀리초)
+  peakWeight: 0.5,       // 티어 점수에서 최고 티어가 차지하는 비율 (0.5 = 최고·현재 반반)
   mottoMaxLength: 40,    // 각오 한마디 최대 글자 수
   photoSize: 240,        // 올린 사진을 이 크기(픽셀)의 정사각형으로 줄여 저장
   teamColors: ["#ff4655", "#4da3ff", "#3ddc97", "#ffc93c", "#b67cff", "#ff8a3d", "#39d0e0", "#ff6fb5"],
@@ -34,9 +35,29 @@ const TIER_SCORE = {};
     else for (let i = 1; i <= steps; i++) TIER_SCORE[`${name} ${i}`] = s++;
   }
 })();
-// 선수 점수 = (최고 티어 점수 + 현재 티어 점수) ÷ 2, 소수점 첫째 자리까지
-function playerScore(p) {
-  return round1(((TIER_SCORE[p.peak] || 0) + (TIER_SCORE[p.current] || 0)) / 2);
+CONFIG.tierScores = { ...TIER_SCORE };   // 새 회차의 기본 점수표 (진행자 화면 '경매 설정'에서 회차마다 바꿀 수 있음)
+
+// 지금 보고 있는 경매의 점수표·비율 (진행자·팀장·운영진 화면이 서버에서 받아 넣음)
+let SCORE_CFG = null;
+function setScoreConfig(cfg) { SCORE_CFG = cfg || null; }
+function tierPoints(tier, cfg = SCORE_CFG) {
+  const table = (cfg && cfg.tierScores) || TIER_SCORE;
+  return Number(table[tier] ?? TIER_SCORE[tier] ?? 0);
+}
+function peakWeight(cfg = SCORE_CFG) { return cfg && cfg.peakWeight != null ? Number(cfg.peakWeight) : 0.5; }
+// 자동 점수 = 최고 티어 점수 × 비율 + 현재 티어 점수 × (1 − 비율), 소수점 첫째 자리까지 (기본 비율 50% = 두 점수의 평균)
+function autoScore(p, cfg = SCORE_CFG) {
+  const w = peakWeight(cfg);
+  return round1(tierPoints(p.peak, cfg) * w + tierPoints(p.current, cfg) * (1 - w));
+}
+// 선수 점수 = 운영자가 직접 정한 점수가 있으면 그 점수, 없으면 자동 점수
+function playerScore(p, cfg = SCORE_CFG) {
+  if (p.score !== null && p.score !== undefined && p.score !== "") return round1(Number(p.score));
+  return autoScore(p, cfg);
+}
+function scoreFormula(p, cfg = SCORE_CFG) {
+  const w = peakWeight(cfg), a = tierPoints(p.peak, cfg), b = tierPoints(p.current, cfg);
+  return w === 0.5 ? `(${a} + ${b}) ÷ 2 = ${autoScore(p, cfg).toFixed(1)}` : `${a}×${Math.round(w * 100)}% + ${b}×${Math.round((1 - w) * 100)}% = ${autoScore(p, cfg).toFixed(1)}`;
 }
 // 팀 점수 = 팀장을 포함한 선수 점수 합계, 평균 = 합계 ÷ 선수 수
 function teamScore(roster) {
