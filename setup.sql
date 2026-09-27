@@ -117,6 +117,7 @@ create table if not exists public.site_settings (
   invite_code text not null default replace(gen_random_uuid()::text, '-', '')   -- 운영자 초대 링크 코드
 );
 insert into public.site_settings (id) values (1) on conflict do nothing;
+alter table public.site_settings add column if not exists last_ping timestamptz;   -- 운영자 콘솔을 열 때마다 기록 (무료 요금제 7일 정지 방지)
 
 alter table public.auctions add column if not exists title            text not null default '';
 alter table public.auctions add column if not exists signup_opens_at  timestamptz;
@@ -1298,6 +1299,24 @@ grant execute on function public.delete_event(uuid, text) to anon, authenticated
 revoke execute on function public._can_host(uuid) from public, anon, authenticated;
 revoke execute on function public.set_event_host(uuid, uuid), public.console_host_action(uuid, text, jsonb) from public;
 grant execute on function public.set_event_host(uuid, uuid), public.console_host_action(uuid, text, jsonb) to anon, authenticated;
+
+-- 서비스 상태: 마지막 사용 시각과 데이터베이스 사용량. 부를 때마다 '사용 중' 표시를 써서 7일 정지 시계를 되돌림
+create or replace function public.service_ping() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_prev timestamptz; v_last timestamptz;
+begin
+  if not _is_staff() then return null; end if;
+  select last_ping into v_prev from site_settings where id = 1;
+  v_last := greatest(v_prev,
+    (select max(created_at) from events), (select max(created_at) from chat),
+    (select max(created_at) from signups), (select max(created_at) from staff_log));
+  update site_settings set last_ping = now() where id = 1;
+  return jsonb_build_object('ok', true, 'now', _ms(now()), 'last_activity', _ms(v_last),
+    'db_bytes', pg_database_size(current_database()),
+    'rounds', (select count(*) from auctions), 'signups', (select count(*) from signups));
+end $$;
+revoke execute on function public.service_ping() from public;
+grant execute on function public.service_ping() to anon, authenticated;
 
 -- 진행 기록 보기: 회차 하나(p_id) 또는 사이트 전체(p_id 없음)
 create or replace function public.get_log(p_id uuid default null, p_limit int default 300) returns jsonb

@@ -11,6 +11,11 @@
   :root { --discord: #5865f2; }
   header .me { display: flex; align-items: center; gap: 8px; font-size: 14px; }
   header .me img, header .me .av { width: 30px; height: 30px; border-radius: 50%; }
+  #svc { background: none; cursor: pointer; font: inherit; font-size: 12px; }
+  .svc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+  .svc-grid div { background: var(--panel-2); border-radius: 10px; padding: 10px 12px; }
+  .svc-grid small { display: block; font-size: 11px; color: var(--muted); }
+  .svc-grid b { font-family: var(--num); font-weight: 400; font-size: 22px; }
   .role { font-size: 11px; font-weight: 900; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
   .role.owner { color: var(--gold); border-color: var(--gold); }
   .role.staff { color: var(--ok); border-color: var(--ok); }
@@ -149,6 +154,7 @@
 <header>
   <div class="logo">VALORANT <span>운영자 콘솔</span></div>
   <div class="spacer"></div>
+  <button class="conn" id="svc" hidden title="서비스 상태 보기">서버 확인 중…</button>
   <div class="me" id="me" hidden></div>
 </header>
 
@@ -293,6 +299,44 @@ function renderMe() {
   $("btnLogout").onclick = logout;
 }
 
+/* ---------- 서비스 상태 (무료 요금제는 7일 동안 안 쓰면 멈춤) ---------- */
+let svc = null;
+async function pingService() {
+  const t0 = Date.now();
+  const { data, error } = await sb.rpc("service_ping");
+  svc = error || !data ? { ok: false, error: error ? error.message : "응답 없음" } : { ...data, rtt: Date.now() - t0 };
+  renderSvcChip();
+  if (view === "staff" && $("svcCard")) $("svcCard").innerHTML = svcCardHtml();
+}
+function ago(ms) {
+  if (!ms) return "기록 없음";
+  const m = Math.floor((Date.now() - ms) / 60000);
+  return m < 1 ? "방금" : m < 60 ? `${m}분 전` : m < 1440 ? `${Math.floor(m / 60)}시간 전` : `${Math.floor(m / 1440)}일 전`;
+}
+function renderSvcChip() {
+  const el = $("svc"); el.hidden = false;
+  el.className = "conn " + (svc && svc.ok ? "on" : "off");
+  el.textContent = svc && svc.ok ? `서버 정상 · ${svc.rtt}ms` : "서버 연결 안 됨";
+}
+function svcCardHtml() {
+  if (!svc) return `<div style="color:var(--muted)">확인 중…</div>`;
+  if (!svc.ok) return `<div class="big-state" style="color:var(--accent)">서버에 연결되지 않아요</div>
+    <div style="color:var(--muted);font-size:13px;line-height:1.6">무료 요금제가 7일 동안 쓰이지 않아 멈췄을 수 있어요. <a href="https://supabase.com/dashboard" target="_blank" style="color:var(--gold)">Supabase 대시보드</a>에서 프로젝트를 열고 <b>Restore project</b>(다시 켜기)를 눌러 주세요. 켜지는 데 몇 분 걸려요.<br>오류: ${esc(svc.error)}</div>`;
+  const mb = svc.db_bytes / 1048576, idleDays = svc.last_activity ? (Date.now() - svc.last_activity) / 86400000 : 0;
+  return `<div class="big-state" style="color:var(--ok)">서버가 켜져 있어요</div>
+    <div class="svc-grid">
+      <div><small>응답 속도</small><b>${svc.rtt}ms</b></div>
+      <div><small>이 확인 전 마지막 사용</small><b>${ago(svc.last_activity)}</b></div>
+      <div><small>데이터베이스 사용량 (무료 500MB)</small><b>${mb.toFixed(1)}MB</b></div>
+      <div><small>회차 · 신청</small><b>${svc.rounds} · ${svc.signups}</b></div>
+    </div>
+    <div style="color:${idleDays > 5 ? "var(--warn)" : "var(--muted)"};font-size:13px;line-height:1.6">
+      무료 요금제는 7일 동안 쓰지 않으면 멈춰요. 운영자 콘솔을 열 때마다 ‘사용 중’ 기록을 남겨서 7일을 다시 세요.
+      <b>내전 전날 이 화면을 한 번 열어 두면 안전해요.</b>${idleDays > 5 ? ` (이번엔 ${Math.floor(idleDays)}일 만에 열었어요)` : ""}</div>
+    <div><button class="btn" id="btnSvcRe">다시 확인</button></div>`;
+}
+$("svc").onclick = () => { view = "staff"; lastSig = ""; render(); refresh(); };
+
 /* ---------- 콘솔 ---------- */
 async function startConsole() {
   $("gate").hidden = true; $("console").hidden = false;
@@ -302,6 +346,8 @@ async function startConsole() {
     .on("broadcast", { event: "changed" }, () => refresh()).subscribe();
   await refresh();
   setInterval(refresh, 6000);
+  pingService();
+  setInterval(pingService, 10 * 60 * 1000);   // 콘솔을 켜 둔 동안 10분마다 확인
 }
 
 async function refresh() {
@@ -871,6 +917,7 @@ async function renderStaff() {
   const person = (m, btns) => `<li>${discordImg(m.avatar, m.name, 34)}<div class="grow"><b>${esc(m.name)}</b> ${m.username ? `<span style="color:var(--muted);font-size:12px">@${esc(m.username)}</span>` : ""}</div>${btns}</li>`;
   $("view").innerHTML = `
     <div class="ev-head"><h2>운영자 ${owner ? "관리" : "명단"}</h2></div>
+    <div class="card"><h3>서비스 상태 (Supabase 무료 요금제)</h3><div id="svcCard" style="display:grid;gap:10px">${svcCardHtml()}</div></div>
     ${owner ? `<div class="card"><h3>운영자 초대 링크</h3>
       ${linkRow("초대 링크", invite, "var(--ok)")}
       <div style="color:var(--muted);font-size:13px;line-height:1.6">운영자에게 이 링크를 보내면, 디스코드로 로그인해 요청을 보내요. 아래에서 승인해야 들어올 수 있어요.<br>링크가 새어 나갔다면 새 링크로 바꾸세요. 예전 링크는 바로 쓸 수 없게 돼요.</div>
@@ -890,6 +937,7 @@ async function renderStaff() {
       await mutate("staff_decide", { p_user: b.dataset.u, p_action: b.dataset.dec });
       return renderStaff();
     }
+    if (ev.target.id === "btnSvcRe") { ev.target.disabled = true; await pingService(); return; }
     if (ev.target.id === "btnInviteReset" && confirm("새 초대 링크로 바꿀까요? 예전 링크는 더 이상 쓸 수 없어요.")) { await call("get_invite", { p_reset: true }); renderStaff(); }
   };
 }
