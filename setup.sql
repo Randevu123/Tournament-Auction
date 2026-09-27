@@ -125,6 +125,7 @@ alter table public.auctions add column if not exists signup_mode      text not n
 alter table public.auctions add column if not exists auction_at       timestamptz;
 alter table public.auctions add column if not exists match_at         timestamptz;
 alter table public.auctions add column if not exists host_user        uuid;          -- 이 회차의 진행자 (운영자 중 한 명, 넘길 수 있음)
+alter table public.auctions add column if not exists unlocked         boolean not null default false;  -- 지난 회차 잠금을 제작자가 풀었는지
 
 alter table public.signups add column if not exists captain    boolean not null default false;  -- 팀장 배정
 alter table public.signups add column if not exists score_override numeric(5,1);                 -- 운영자가 직접 정한 티어 점수 (비우면 자동 계산)
@@ -182,6 +183,18 @@ revoke all on public.staff, public.site_settings, public.signup_checks, public.t
 -- 시각을 화면용 숫자(밀리초)로
 create or replace function public._ms(t timestamptz) returns bigint
 language sql immutable as $$ select (extract(epoch from t) * 1000)::bigint $$;
+
+-- 지난 회차(경매가 끝났거나 경기 일시가 지남)는 잠김. 제작자가 풀면(unlocked) 고칠 수 있음
+create or replace function public._locked(a public.auctions) returns boolean
+language sql stable as $$
+  select not coalesce(a.unlocked, false) and (a.status = 'done' or (a.match_at is not null and a.match_at < now()))
+$$;
+create or replace function public._locked_id(p_id uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select _locked(a) from auctions a where a.id = p_id), false)
+$$;
+create or replace function public._lock_msg() returns jsonb
+language sql immutable as $$ select jsonb_build_object('ok', false, 'reason', '지난 회차라 잠겨 있어요. 고쳐야 하면 제작자가 ‘잠금 풀기’를 눌러 주세요.') $$;
 
 -- 지금 신청을 받는 중인지: 버튼(open/closed)이 우선, auto면 신청 시작~마감 시각으로 판단
 create or replace function public._signup_open(a public.auctions) returns boolean
@@ -244,8 +257,10 @@ language sql stable security definer set search_path = public as $$
     'players', (select coalesce(jsonb_agg(jsonb_build_object(
                   'id', p.id, 'name', p.name, 'peak', p.peak, 'current', p.current_tier, 'pos', p.pos,
                   'captain', p.captain, 'motto', p.motto, 'unsold', p.unsold,
-                  'team', p.team_idx, 'price', p.price, 'how', p.how, 'score', p.score_override, 'signup_id', p.signup_id) order by p.id), '[]')
+                  'team', p.team_idx, 'price', p.price, 'how', p.how, 'score', p.score_override, 'signup_id', p.signup_id,
+                  'discord', (select s.discord_name from signups s where s.id = p.signup_id)) order by p.id), '[]')
                 from players p where p.auction_id = a.id),
+    'title', a.title, 'locked', _locked(a),
     'events', (select coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'kind', e.kind, 'body', e.body) order by e.id desc), '[]')
                from (select * from events where auction_id = a.id order by id desc limit 40) e)
   ) from auctions a where a.id = p_id
@@ -527,6 +542,9 @@ begin
     return jsonb_build_object('ok', false, 'reason', '진행자 링크가 아니에요.');
   end if;
   select * into a from auctions where id = p_id for update;
+  if _locked(a) and p_action in ('set_players', 'set_order', 'reset', 'load_signups', 'set_config', 'set_handicap', 'set_player') then
+    return _lock_msg() || jsonb_build_object('state', _state(p_id));
+  end if;
 
   if p_action = 'set_players' then
     if a.status <> 'setup' then v_reason := '경매 준비 단계에서만 고칠 수 있어요.';
@@ -789,7 +807,7 @@ begin
   if v_uid is null then return jsonb_build_object('ok', false, 'reason', '디스코드로 로그인해야 신청할 수 있어요.'); end if;
   select id into v_auction from auctions where signup_code = p_code;
   if v_auction is null then return jsonb_build_object('ok', false, 'reason', '신청 링크가 올바르지 않아요.'); end if;
-  if not _signup_open((select x from auctions x where x.id = v_auction)) then
+  if _locked_id(v_auction) or not _signup_open((select x from auctions x where x.id = v_auction)) then
     return jsonb_build_object('ok', false, 'reason', '지금은 신청 기간이 아니에요.');
   end if;
   select * into s from signups where auction_id = v_auction and user_id = v_uid;
@@ -975,6 +993,7 @@ begin
       'captains', (select count(*) from signups s where s.auction_id = a.id and s.captain),
       'team_count', (a.config ->> 'teamCount')::int,
       'host_name', (select discord_name from staff where user_id = a.host_user), 'status_label', a.status,
+      'locked', _locked(a), 'unlocked', a.unlocked,
       'tasks_open', (select count(*) from tasks t where t.auction_id = a.id and not t.done)) e
     from auctions a) x);
 end $$;
@@ -1004,6 +1023,7 @@ declare o auctions; n auctions; v_changes text;
 begin
   if not _is_staff() then return _no(); end if;
   select * into o from auctions where id = p_id;
+  if _locked(o) then return _lock_msg(); end if;
   if p_patch ? 'signup_mode' and not (p_patch ->> 'signup_mode' = any (array['auto', 'open', 'closed'])) then
     return jsonb_build_object('ok', false, 'reason', '신청 상태 값이 잘못됐어요.');
   end if;
@@ -1041,7 +1061,8 @@ begin
     'event', jsonb_build_object('id', a.id, 'title', a.title, 'status', a.status, 'open', _signup_open(a),
       'signup_mode', a.signup_mode, 'opens_at', _ms(a.signup_opens_at), 'closes_at', _ms(a.signup_closes_at),
       'auction_at', _ms(a.auction_at), 'match_at', _ms(a.match_at), 'created_at', _ms(a.created_at),
-      'signup_code', a.signup_code, 'team_count', (a.config ->> 'teamCount')::int, 'config', a.config),
+      'signup_code', a.signup_code, 'team_count', (a.config ->> 'teamCount')::int, 'config', a.config,
+      'locked', _locked(a), 'unlocked', a.unlocked),
     'signups', (select coalesce(jsonb_agg(jsonb_build_object('id', s.id, 'user_id', s.user_id,
         'discord_name', s.discord_name, 'discord_username', s.discord_username, 'discord_avatar', s.discord_avatar,
         'nick', s.nick, 'peak', s.peak, 'current', s.current_tier, 'pos', s.pos, 'captain', s.captain, 'memo', s.memo, 'score', s.score_override,
@@ -1068,6 +1089,7 @@ begin
   if not _is_staff() then return _no(); end if;
   select * into s from signups where id = p_signup for update;
   if s.id is null then return jsonb_build_object('ok', false, 'reason', '신청을 찾지 못했어요.'); end if;
+  if _locked_id(s.auction_id) then return _lock_msg(); end if;
   v_peak := coalesce(p_patch ->> 'peak', s.peak);
   v_cur := coalesce(p_patch ->> 'current', s.current_tier);
   if not _valid_tier(v_peak) or not _valid_tier(v_cur) then return jsonb_build_object('ok', false, 'reason', '티어 이름이 잘못됐어요.'); end if;
@@ -1117,6 +1139,7 @@ language plpgsql security definer set search_path = public as $$
 declare s signups;
 begin
   if not _is_staff() then return _no(); end if;
+  if _locked_id((select auction_id from signups where id = p_signup)) then return _lock_msg(); end if;
   delete from signups where id = p_signup returning * into s;
   if s.id is not null then
     perform _slog(s.auction_id, '신청 지움', format('%s (%s) · %s / %s · %s', s.nick, s.discord_name, s.peak, s.current_tier, s.pos));
@@ -1133,6 +1156,7 @@ begin
   if p_kind not in ('tier', 'score') then return jsonb_build_object('ok', false, 'reason', '검수 종류가 잘못됐어요.'); end if;
   select * into s from signups where id = p_signup;
   if s.id is null then return jsonb_build_object('ok', false, 'reason', '신청을 찾지 못했어요.'); end if;
+  if _locked_id(s.auction_id) then return _lock_msg(); end if;
   if p_on then
     select * into d from _discord_of(auth.uid());
     insert into signup_checks (signup_id, kind, user_id, staff_name) values (p_signup, p_kind, auth.uid(), d.name)
@@ -1221,6 +1245,7 @@ language plpgsql security definer set search_path = public as $$
 declare v_key text; r jsonb;
 begin
   if not _can_host(p_id) then return jsonb_build_object('ok', false, 'reason', '이 회차의 진행자나 제작자만 경매 준비를 할 수 있어요.'); end if;
+  if _locked_id(p_id) then return _lock_msg(); end if;
   if p_action not in ('load_signups', 'set_config', 'set_handicap', 'set_order') then
     return jsonb_build_object('ok', false, 'reason', '운영자 콘솔에서 할 수 없는 조작이에요.');
   end if;
@@ -1253,6 +1278,20 @@ begin
   delete from auctions where id = p_id;   -- 선수·팀·신청·검수·할 일·채팅·링크가 함께 지워짐 (진행 기록은 남음)
   return jsonb_build_object('ok', true);
 end $$;
+-- 지난 회차 잠금 풀기 / 다시 잠그기 (제작자만)
+create or replace function public.set_event_unlocked(p_id uuid, p_unlocked boolean) returns jsonb
+language plpgsql security definer set search_path = public as $$
+begin
+  if _my_role() is distinct from 'owner' then return jsonb_build_object('ok', false, 'reason', '잠금은 제작자만 풀 수 있어요.'); end if;
+  update auctions set unlocked = coalesce(p_unlocked, false) where id = p_id;
+  if not found then return jsonb_build_object('ok', false, 'reason', '회차를 찾지 못했어요.'); end if;
+  perform _slog(p_id, case when p_unlocked then '지난 회차 잠금 풀기' else '지난 회차 다시 잠그기' end, '');
+  return jsonb_build_object('ok', true);
+end $$;
+revoke execute on function public.set_event_unlocked(uuid, boolean) from public;
+grant execute on function public.set_event_unlocked(uuid, boolean) to anon, authenticated;
+revoke execute on function public._locked(public.auctions), public._locked_id(uuid), public._lock_msg() from public, anon, authenticated;
+
 revoke execute on function public.delete_event(uuid, text) from public;
 grant execute on function public.delete_event(uuid, text) to anon, authenticated;
 

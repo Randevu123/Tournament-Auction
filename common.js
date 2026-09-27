@@ -358,3 +358,72 @@ function mountChat(root, net, { storeKey, startCollapsed = false } = {}) {
     },
   };
 }
+
+/* [8] 경매 결과: 결과 화면과 엑셀 파일 (진행자·팀장·연습판·운영자 콘솔이 함께 씀) */
+function resultTeams(state) {
+  return state.teams.map(t => {
+    const roster = rosterOf(state, t.idx);
+    const start = (state.config.startPoints || 0) - (t.handicap || 0);
+    const { sum, avg } = teamScore(roster);
+    return { team: t, roster, start, used: start - t.points, sum, avg };
+  });
+}
+function howLabel(p) { return p.how === "captain" ? "팀장" : p.how === "random" ? "유찰 → 무작위 배정" : "낙찰"; }
+
+function resultHtml(state) {
+  const teams = resultTeams(state);
+  const left = state.players.filter(p => p.team === null);
+  return `<div class="result-grid">${teams.map(({ team: t, roster, start, sum, avg }) => `
+      <div class="result-team" style="--c:${esc(t.color)}">
+        <div class="rt-head"><b>${esc(t.name)}</b><span>${roster.length}명</span></div>
+        <div class="rt-nums"><div><small>남은 포인트</small><b>${t.points}P</b></div><div><small>시작</small><b>${start}P</b></div><div><small>점수 합계</small><b>${sum.toFixed(1)}</b></div><div><small>평균</small><b>${avg === null ? "-" : avg.toFixed(1)}</b></div></div>
+        <table class="rt-table"><tbody>${roster.map(p => `<tr class="${p.how === "random" ? "rnd" : ""}">
+          <td>${avatar(p, 22)}</td><td><b>${esc(p.name)}</b>${p.discord ? `<small>${esc(p.discord)}</small>` : ""}</td>
+          <td>${esc(p.pos)}</td><td class="sc">${playerScore(p).toFixed(1)}</td>
+          <td class="pr">${p.how === "captain" ? "팀장" : p.how === "random" ? "무작위" : `${p.price}P`}</td></tr>`).join("")}</tbody></table>
+      </div>`).join("")}</div>
+    ${left.length ? `<div class="result-left">팀에 못 들어간 선수 ${left.length}명: ${left.map(p => esc(p.name)).join(", ")}</div>` : ""}`;
+}
+
+// 엑셀(.xlsx) 파일: 시트1 "팀 구성", 시트2 "팀 요약" (+ 남은 선수가 있으면 시트3)
+function downloadResultXlsx(state, title) {
+  const teams = resultTeams(state);
+  const rows = [["팀", "구분", "선수 닉네임", "디스코드 이름", "최고 티어", "현재 티어", "티어 점수", "포지션", "낙찰가", "비고"]];
+  teams.forEach(({ team: t, roster }) => roster.forEach(p => rows.push([
+    t.name, howLabel(p), p.name, p.discord || "", p.peak, p.current, Number(playerScore(p).toFixed(1)), p.pos,
+    p.how === "bid" ? p.price : 0, p.how === "random" ? "유찰되어 무작위로 배정됨" : p.how === "captain" ? "팀장" : ""])));
+  const summary = [["팀", "팀장", "인원", "시작 포인트", "핸디캡", "쓴 포인트", "남은 포인트", "티어 점수 합계", "티어 점수 평균"]];
+  teams.forEach(({ team: t, roster, start, used, sum, avg }) => summary.push([
+    t.name, (roster.find(p => p.how === "captain") || {}).name || "", roster.length, start, t.handicap || 0, used, t.points,
+    Number(sum.toFixed(1)), avg === null ? "" : Number(avg.toFixed(1))]));
+  const left = state.players.filter(p => p.team === null);
+  const pad = n => String(n).padStart(2, "0"), d = new Date();
+  const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+  // 파일 이름은 영문 (한글 파일 이름을 "download"로 바꾸는 브라우저가 있음)
+  const name = `auction-result_${stamp}`;
+  if (window.XLSX) {
+    const wb = XLSX.utils.book_new();
+    const ws1 = XLSX.utils.aoa_to_sheet(rows);
+    ws1["!cols"] = [14, 18, 16, 16, 12, 12, 9, 9, 8, 22].map(w => ({ wch: w }));
+    const ws2 = XLSX.utils.aoa_to_sheet(summary);
+    ws2["!cols"] = [16, 14, 6, 11, 8, 10, 11, 13, 13].map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, ws1, "팀 구성");
+    XLSX.utils.book_append_sheet(wb, ws2, "팀 요약");
+    if (left.length) {
+      const ws3 = XLSX.utils.aoa_to_sheet([["선수 닉네임", "디스코드 이름", "최고 티어", "현재 티어", "티어 점수", "포지션", "유찰 횟수"]]
+        .concat(left.map(p => [p.name, p.discord || "", p.peak, p.current, Number(playerScore(p).toFixed(1)), p.pos, p.unsold || 0])));
+      XLSX.utils.book_append_sheet(wb, ws3, "팀에 못 들어간 선수");
+    }
+    wb.Props = { Title: title || "경매 결과" };
+    XLSX.writeFile(wb, `${name}.xlsx`);
+    return "xlsx";
+  }
+  // 엑셀 라이브러리를 못 불러오면 CSV로 (엑셀에서 열림)
+  const cell = v => { const t = String(v ?? ""); return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+  const csv = "﻿" + rows.map(r => r.map(cell).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a"); a.href = url; a.download = `${name}.csv`; a.style.display = "none";
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 4000);
+  return "csv";
+}

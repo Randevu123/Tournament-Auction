@@ -191,6 +191,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="config.js"></script>
 <script src="common.js"></script>
 <script>
@@ -385,6 +386,10 @@ function renderEvent() {
       <span style="color:var(--muted);font-size:13px">경매 ${fmt(e.auction_at)} · 경기 ${fmt(e.match_at)}</span>
       <span class="host-chip">진행자 <b>${esc(detail.host.name || "없음")}</b>${detail.host.user_id === me.user_id ? " (나)" : ""}</span>
     </div>
+    ${e.locked ? `<div class="lock-banner">잠김 · 지난 회차라 참가자 고치기와 일정·경매 설정을 바꿀 수 없어요. (할 일·기록·CSV·결과 내려받기는 돼요)
+      ${me.role === "owner" ? `<button class="btn" id="btnUnlock">잠금 풀기</button>` : `<span style="font-weight:400">고쳐야 하면 제작자에게 잠금 풀기를 부탁하세요.</span>`}</div>`
+      : e.unlocked && isPast({ status_label: e.status, match_at: e.match_at }) ? `<div class="lock-banner" style="color:var(--ok);border-color:var(--ok);background:rgba(61,220,151,.06)">지난 회차지만 제작자가 잠금을 풀어 두었어요.
+      ${me.role === "owner" ? `<button class="btn" id="btnRelock">다시 잠그기</button>` : ""}</div>` : ""}
     <div class="stats">
       <div class="stat"><small>신청</small><b>${S.length}<em>명</em></b></div>
       <div class="stat"><small>팀장 배정</small><b>${caps}<em>명</em></b></div>
@@ -393,17 +398,19 @@ function renderEvent() {
       <div class="stat"><small>남은 할 일</small><b>${openTasks}<em>개</em></b></div>
     </div>
     <div class="tabs">
-      ${[["people", "참가자", S.length], ["prep", "경매 준비"], ["schedule", "일정 · 신청 마감"], ["tasks", "할 일", openTasks], ["links", "링크"], ["log", "기록"]]
+      ${[["people", "참가자", S.length], ["prep", "경매 준비"], ["schedule", "일정 · 신청 마감"], ["tasks", "할 일", openTasks], ["result", "경매 결과"], ["links", "링크"], ["log", "기록"]]
         .map(([k, l, n]) => `<button data-tab="${k}" class="${tab === k ? "on" : ""}">${l}${n !== undefined ? `<b>${n}</b>` : ""}</button>`).join("")}
     </div>
     <div id="tabBody"></div>`;
   $("view").querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { tab = b.dataset.tab; if (tab === "log") { lastSig = ""; refresh(); } renderEvent(); });
-  ({ people: renderPeople, prep: renderPrep, schedule: renderSchedule, tasks: renderTasks, links: renderLinks, log: renderLog })[tab]();
+  ({ people: renderPeople, prep: renderPrep, schedule: renderSchedule, tasks: renderTasks, result: renderResult, links: renderLinks, log: renderLog })[tab]();
+  if ($("btnUnlock")) $("btnUnlock").onclick = () => { if (confirm("이 지난 회차의 잠금을 풀까요? 참가자·설정을 다시 고칠 수 있게 돼요.")) mutate("set_event_unlocked", { p_id: e.id, p_unlocked: true }); };
+  if ($("btnRelock")) $("btnRelock").onclick = () => mutate("set_event_unlocked", { p_id: e.id, p_unlocked: false });
 }
 
 /* ---------- 참가자: 고치기·지우기·메모·팀장·교차검수 ---------- */
 function renderPeople() {
-  const e = detail.event;
+  const e = detail.event, RO = !!e.locked;
   const list = detail.signups.filter(s => {
     if (search && !`${s.nick} ${s.discord_name} ${s.discord_username}`.toLowerCase().includes(search.toLowerCase())) return false;
     if (filter === "todo") return !isDone(s, "tier") || !isDone(s, "score");
@@ -415,7 +422,7 @@ function renderPeople() {
     const cs = checksOf(s, kind), mine = cs.some(c => c.user_id === me.user_id), n = cs.length;
     const state = n >= NEED_CHECKS ? `<span class="chip done">완료 ${n}/${NEED_CHECKS}</span>` : n ? `<span class="chip part">${n}/${NEED_CHECKS}</span>` : `<span class="chip">0/${NEED_CHECKS}</span>`;
     return `<div class="chk">${state}<div class="names">${cs.map(c => esc(c.name)).join(", ") || "아직 없음"}</div>
-      <button class="${mine ? "mine" : ""}" data-check="${kind}" data-id="${s.id}" data-on="${mine ? 0 : 1}">${mine ? "내 확인 취소" : "확인"}</button></div>`;
+      <button class="${mine ? "mine" : ""}" data-check="${kind}" data-id="${s.id}" data-on="${mine ? 0 : 1}" ${RO ? "disabled" : ""}>${mine ? "내 확인 취소" : "확인"}</button></div>`;
   };
   $("tabBody").innerHTML = `
     <div class="toolbar">
@@ -430,7 +437,7 @@ function renderPeople() {
       <thead><tr><th>팀장</th><th>#</th><th>디스코드</th><th>게임 닉네임</th><th>최고 티어</th><th>현재 티어</th><th>포지션</th><th>점수</th><th>티어 검수</th><th>점수 계산 재확인</th><th>메모</th><th></th></tr></thead>
       <tbody>${list.length ? list.map((s, i) => `
         <tr class="${s.captain ? "captain" : ""}">
-          <td><button class="star ${s.captain ? "on" : ""}" data-cap="${s.id}" title="팀장 배정">★</button></td>
+          <td><button class="star ${s.captain ? "on" : ""}" data-cap="${s.id}" title="팀장 배정" ${RO ? "disabled" : ""}>★</button></td>
           <td>${detail.signups.indexOf(s) + 1}</td>
           <td><div class="dc">${discordImg(s.discord_avatar, s.discord_name, 26)}<div><b>${esc(s.discord_name)}</b>${s.discord_username ? `<small>@${esc(s.discord_username)}</small>` : ""}</div></div></td>
           <td><b>${esc(s.nick)}</b>${s.updated_by ? `<div class="calc">${esc(s.updated_by)} 님이 고침</div>` : ""}</td>
@@ -438,8 +445,8 @@ function renderPeople() {
           <td><span class="score">${playerScore(s).toFixed(1)}</span>${s.score != null ? `<div class="calc">직접 정함</div>` : ""}</td>
           <td>${checkCell(s, "tier")}</td>
           <td><div class="calc">${scoreFormula(s)}${s.score != null ? ` → 직접 정한 점수 <b style="color:var(--gold)">${Number(s.score).toFixed(1)}</b>` : ""}</div>${checkCell(s, "score")}</td>
-          <td><div class="memo ${s.memo ? "" : "empty"}" data-edit="${s.id}" title="${esc(s.memo)}">${s.memo ? esc(s.memo) : "메모 쓰기"}</div></td>
-          <td><div class="acts"><button data-edit="${s.id}">고치기</button><button class="del" data-del="${s.id}">지우기</button></div></td>
+          <td><div class="memo ${s.memo ? "" : "empty"}" ${RO ? "" : `data-edit="${s.id}"`} title="${esc(s.memo)}">${s.memo ? esc(s.memo) : RO ? "" : "메모 쓰기"}</div></td>
+          <td>${RO ? `<span class="chip">잠김</span>` : `<div class="acts"><button data-edit="${s.id}">고치기</button><button class="del" data-del="${s.id}">지우기</button></div>`}</td>
         </tr>`).join("") : `<tr><td colspan="12" class="empty-view" style="padding:30px">조건에 맞는 신청이 없어요.</td></tr>`}</tbody>
     </table></div>`;
   $("fSearch").oninput = ev => { search = ev.target.value; const pos = ev.target.selectionStart; renderPeople(); const f = $("fSearch"); f.focus(); f.setSelectionRange(pos, pos); };
@@ -508,7 +515,7 @@ function renderPrep() {
     peakWeight: peakWeight(cfg), tierScores: { ...TIER_SCORE, ...(cfg.tierScores || {}) }, handicaps: Object.fromEntries(st.teams.map(t => [t.idx, t.handicap || 0])) };
   if (!setup || !d.order) d.order = [...st.queue];
   else d.order = d.order.filter(id => st.queue.includes(id)).concat(st.queue.filter(id => !d.order.includes(id)));   // 명단이 바뀌면 맞춤
-  const dis = !can || !setup ? "disabled" : "";
+  const dis = !can || !setup || e.locked ? "disabled" : "";
   const nPlayers = sigs.filter(x => !d.caps.includes(x.id) && !d.excluded.has(x.id)).length;
   const slots = d.caps.length * (d.settings.teamSize - 1);
   const members = window.members.filter(m => m.role !== "pending");
@@ -544,7 +551,7 @@ function renderPrep() {
           || `<tr><td colspan="8" style="color:var(--muted);padding:20px;text-align:center">아직 신청이 없어요.</td></tr>`}</tbody>
       </table></div>
       <div style="color:var(--muted);font-size:12px">티어·점수는 ‘참가자’ 탭의 ‘고치기’에서 바꿔요(부계정은 점수 직접 입력). 경매 선수를 채운 뒤에 고쳐도 경매 화면에 바로 반영돼요.</div>
-      <div><button class="btn primary" id="btnFill" ${!can || !setup || !d.caps.length ? "disabled" : ""}>이 명단으로 경매 선수 채우기</button>
+      <div><button class="btn primary" id="btnFill" ${!can || !setup || e.locked || !d.caps.length ? "disabled" : ""}>이 명단으로 경매 선수 채우기</button>
         ${st.players.length ? `<span style="color:var(--muted);font-size:13px;margin-left:8px">지금: 팀 ${st.teams.length}개 (${st.teams.map(t => `${esc(t.name)} ${t.points}P`).join(", ")}) · 경매 선수 ${st.queue.length}명</span>` : ""}</div>
     </div>
 
@@ -557,9 +564,9 @@ function renderPrep() {
         <label>빈자리 1칸당 남길 포인트<input type="number" data-set="reservePerSlot" value="${S.reservePerSlot}" ${dis}></label>
       </div>
       ${st.teams.length ? `<div class="set-grid">${st.teams.map(t => `<label style="color:${esc(t.color)}">${esc(t.name)} 핸디캡<input type="number" data-thc="${t.idx}" value="${S.handicaps[t.idx] ?? t.handicap}" ${dis}></label>`).join("")}</div>` : ""}
-      <div class="weight"><label>최고 티어 비율 <b id="wLabel"></b><input type="range" id="wRange" min="0" max="100" step="5" value="${Math.round(S.peakWeight * 100)}" ${can ? "" : "disabled"}></label><div class="calc" id="wEx"></div></div>
-      <div class="tier-grid">${Object.keys(TIER_SCORE).map(t => `<label>${t}<input type="number" step="0.5" min="0" max="1000" data-tier="${t}" value="${S.tierScores[t]}" ${can ? "" : "disabled"}></label>`).join("")}</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="btnTierDef" ${can ? "" : "disabled"}>기본 점수표로</button><button class="btn primary" id="btnSetSave" ${can ? "" : "disabled"}>설정 저장</button>
+      <div class="weight"><label>최고 티어 비율 <b id="wLabel"></b><input type="range" id="wRange" min="0" max="100" step="5" value="${Math.round(S.peakWeight * 100)}" ${can && !e.locked ? "" : "disabled"}></label><div class="calc" id="wEx"></div></div>
+      <div class="tier-grid">${Object.keys(TIER_SCORE).map(t => `<label>${t}<input type="number" step="0.5" min="0" max="1000" data-tier="${t}" value="${S.tierScores[t]}" ${can && !e.locked ? "" : "disabled"}></label>`).join("")}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="btnTierDef" ${can && !e.locked ? "" : "disabled"}>기본 점수표로</button><button class="btn primary" id="btnSetSave" ${can && !e.locked ? "" : "disabled"}>설정 저장</button>
         <span style="color:var(--muted);font-size:12px">시작 포인트·입찰 단위·팀 인원·핸디캡은 경매 시작 전에만, 점수표·비율은 언제든 바꿀 수 있어요.</span></div>
     </div>
 
@@ -647,6 +654,19 @@ function renderPrep() {
   }
 }
 
+/* ---------- 경매 결과 (결과 화면 + 엑셀) ---------- */
+function renderResult() {
+  const st = detail.state, done = st.status === "done";
+  setScoreConfig(st.config);
+  if (!st.teams.length) { $("tabBody").innerHTML = `<div class="empty-view">아직 경매 선수를 채우지 않았어요. ‘경매 준비’ 탭에서 시작하세요.</div>`; return; }
+  $("tabBody").innerHTML = `<div class="result-box">
+      <div class="result-head"><h2>${done ? "경매 <span>결과</span>" : "지금까지의 <span>팀 구성</span>"}</h2>
+        <button class="btn gold big" id="btnXlsx">엑셀로 내려받기</button>
+        <span class="state-line">${done ? "경매가 끝났어요." : `경매가 아직 안 끝났어요 (${STATUS_LABEL[st.status] || st.status}). 지금 상태로 받을 수 있어요.`}</span></div>
+      ${resultHtml(st)}</div>`;
+  $("btnXlsx").onclick = () => { const k = downloadResultXlsx(st, detail.event.title); toast(k === "xlsx" ? "엑셀 파일을 내려받았어요." : "엑셀 도구를 못 불러와서 CSV로 내려받았어요."); };
+}
+
 /* ---------- 일정 · 신청 마감 ---------- */
 function renderSchedule() {
   const e = detail.event;
@@ -655,7 +675,7 @@ function renderSchedule() {
       <h3>신청 받기</h3>
       <div class="big-state" style="color:${e.open ? "var(--ok)" : "var(--warn)"}">${e.open ? "지금 신청을 받고 있어요" : "지금은 신청이 닫혀 있어요"}</div>
       <div class="seg" id="modeSeg">
-        ${[["auto", "일정대로 자동"], ["open", "지금 열기"], ["closed", "지금 마감"]].map(([k, l]) => `<button data-mode="${k}" class="${e.signup_mode === k ? "on" : ""}">${l}</button>`).join("")}
+        ${[["auto", "일정대로 자동"], ["open", "지금 열기"], ["closed", "지금 마감"]].map(([k, l]) => `<button data-mode="${k}" class="${e.signup_mode === k ? "on" : ""}" ${e.locked ? "disabled" : ""}>${l}</button>`).join("")}
       </div>
       <div style="color:var(--muted);font-size:13px;line-height:1.6">
         ‘일정대로 자동’이면 아래 신청 시작 시각에 열리고 신청 마감 시각에 닫혀요. (비워 두면 그쪽은 제한 없음)<br>
@@ -671,7 +691,7 @@ function renderSchedule() {
         <div class="field"><label>경매 일시</label><input type="datetime-local" id="sAuction" value="${toLocalInput(e.auction_at)}"></div>
         <div class="field"><label>경기 일시</label><input type="datetime-local" id="sMatch" value="${toLocalInput(e.match_at)}"></div>
       </div>
-      <div><button class="btn primary" id="btnSchedSave">일정 저장</button></div>
+      <div><button class="btn primary" id="btnSchedSave" ${e.locked ? "disabled" : ""}>일정 저장</button></div>
       <div style="color:var(--muted);font-size:12px">신청 화면에도 신청 기간과 경매 일시가 표시돼요.</div>
     </div>
     ${detail.can_host ? `<div class="card danger"><h3>회차 지우기</h3>

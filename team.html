@@ -10,7 +10,7 @@
 <style>
   :root { --c: var(--accent); --bidbar-h: 150px; }
   body { padding-bottom: calc(var(--bidbar-h) + 16px); }
-  body.typing { padding-bottom: 16px; }
+  body.typing, body.auction-done { padding-bottom: 16px; }
   header { gap: 10px; padding: 10px 16px; }
   .my-team { font-family: var(--num); font-size: 22px; color: var(--c); display: flex; align-items: center; gap: 8px; min-width: 0; }
   .my-team span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -125,6 +125,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="config.js"></script>
 <script src="common.js"></script>
 <script>
@@ -200,9 +201,14 @@ function render(prev) {
 
   // 선수 카드
   if (!p) {
-    const title = { setup: "경매 준비 중", done: "경매가 끝났어요" }[s.status] || "잠시만요";
-    const sub = s.status === "setup" ? "진행자가 경매 순서를 뽑으면 여기에 선수가 올라옵니다." : "";
-    $("lot").innerHTML = `<div class="waiting"><h2>${title}</h2><div>${sub}</div></div>`;
+    if (s.status === "done") {
+      $("lot").innerHTML = `<div class="result-head"><h2>경매 <span>결과</span></h2><button class="btn gold" id="btnXlsx">엑셀로 내려받기</button></div>${resultHtml(s)}`;
+      $("btnXlsx").onclick = () => downloadResultXlsx(S, S.title);
+    } else {
+      const title = { setup: "경매 준비 중" }[s.status] || "잠시만요";
+      const sub = s.status === "setup" ? "진행자가 경매 순서를 정하면 여기에 선수가 올라옵니다." : "";
+      $("lot").innerHTML = `<div class="waiting"><h2>${title}</h2><div>${sub}</div></div>`;
+    }
   } else {
     const lead = s.bid_team !== null ? s.teams[s.bid_team] : null;
     const leadHtml = !lead ? "아직 입찰 없음"
@@ -256,6 +262,9 @@ function render(prev) {
 // 입찰 버튼 켜기/끄기 — 다른 팀 버튼은 아예 없음
 function renderBidbar() {
   const s = S, me = s.teams[ME], open = openSlots(s, ME);
+  // 경매가 끝나면 입찰 줄을 숨김
+  $("bidbar").hidden = s.status === "done";
+  document.body.classList.toggle("auction-done", s.status === "done");
   let why = null, anyOk = false;
   document.querySelectorAll(".bidbar .q").forEach(b => {
     const q = Number(b.dataset.q), amount = s.bid_amount + q;

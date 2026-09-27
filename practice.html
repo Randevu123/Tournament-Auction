@@ -57,6 +57,10 @@
         <button class="btn primary big" id="btnDraw">③ 순서 무작위로 뽑기</button>
       </div>
     </div>
+    <div class="result-box" id="resultBox" hidden>
+      <div class="result-head"><h2>경매 <span>결과</span></h2><button class="btn gold big" id="btnXlsx">엑셀로 내려받기</button><span class="state-line" id="resultNote"></span></div>
+      <div id="resultBody"></div>
+    </div>
     <div id="lotLeft">
       <div class="card-label">NOW ON AUCTION</div>
       <div class="p-top">
@@ -168,6 +172,7 @@
 <div class="flash" id="flash"><div class="flash-inner"><div id="flashPhoto"></div><div class="flash-title" id="flashTitle">SOLD</div><div class="flash-sub" id="flashSub"></div></div></div>
 <div class="toast" id="toast"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="common.js"></script>
 <script>
 /* =====================================================================
@@ -526,6 +531,9 @@ function render() {
   $("setupBox").style.display = setup ? "" : "none";
   $("lotLeft").style.display = setup ? "none" : "";
   $("lotRight").style.display = setup ? "none" : "";
+  const done = s.status === "done";
+  $("resultBox").hidden = !done;
+  if (done) { $("lotLeft").style.display = "none"; $("lotRight").style.display = "none"; $("resultBody").innerHTML = resultHtml(s); }
   $("setupTitle").textContent = `팀장 ${s.teams.length}명 · 경매 선수 ${s.queue.length}명 · 시작 ${c.startPoints}P · 입찰 단위 ${c.bidStep}P`;
   const p = s.current !== null ? cur() : null;
   $("pPhoto").innerHTML = p ? avatar(p, 130) : "";
@@ -597,6 +605,10 @@ requestAnimationFrame(renderTimer);
 
 /* ---------- 조작 ---------- */
 $("btnStart").onclick = startOrResume;
+$("btnXlsx").onclick = () => {
+  const kind = downloadResultXlsx(P, "연습 경매");
+  $("resultNote").textContent = kind === "xlsx" ? "엑셀 파일을 내려받았어요." : "엑셀 도구를 못 불러와서 CSV 파일(엑셀에서 열림)로 내려받았어요.";
+};
 $("btnPause").onclick = pause;
 $("btnHammer").onclick = finishLot;
 $("btnNext").onclick = () => { if (P.status === "result") nextPlayer(); };
