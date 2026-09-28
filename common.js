@@ -150,11 +150,21 @@ const PLAYERS_SEED = [
   ["클러치장인", "초월자 1", "플래티넘 3", "감시자", false, "1대3도 해 봤습니다"],
   ["노란우산", "실버 2", "실버 1", "전략가", false, "우산처럼 팀을 지킵니다"],
   ["마지막한발", "골드 3", "골드 2", "척후대", false, "마지막 한 발은 꼭 맞힘"],
+  ["새벽세시", "초월자 2", "다이아몬드 3", "척후대", true, "밤샘은 자신 있습니다"],
+  ["포탑수리공", "플래티넘 2", "골드 1", "감시자", false, "포탑 위치는 늘 같은 곳"],
+  ["번개배달", "다이아몬드 3", "다이아몬드 2", "타격대", false, "제일 먼저 도착합니다"],
+  ["구석탐험가", "실버 3", "실버 3", "척후대", false, "구석 확인은 제 담당"],
+  ["연막한스푼", "골드 2", "골드 2", "전략가", false, "연막은 딱 필요한 만큼"],
+  ["늦게온손님", "플래티넘 1", "플래티넘 1", "타격대", false, "늦게 신청했지만 대타 가능"],
 ];
 function seedProfiles() {
-  return PLAYERS_SEED.map(([name, peak, current, pos, captain, motto], i) =>
+  const list = PLAYERS_SEED.map(([name, peak, current, pos, captain, motto], i) =>
     ({ id: i, name, peak, current, pos, captain, motto, photo: "",
        agents: [0, 3].slice(0, 1 + (i % 2)).map(k => AGENTS[pos][(i + k) % AGENTS[pos].length]) }));   // 연습용 주 요원 1~2개
+  // 31명 → 6팀(30명) + 늦게 온 1명은 대기, 경매 티어 A~D 자동 나누기
+  const sp = splitGrades(list.map(p => ({ id: p.id, captain: p.captain, order: p.id, score: autoScore(p) })), 5);
+  list.forEach(p => { p.grade = p.captain ? null : sp.grades[p.id]; p.bench = sp.bench.includes(p.id); });
+  return list;
 }
 // 1단계 연습판에서 고쳐 둔 선수 정보가 있으면 그것을 씀
 function localProfiles() {
@@ -179,10 +189,127 @@ function bidBlockReason(state, team, amount) {
   const c = state.config, open = openSlots(state, team.idx);
   if (state.status !== "running") return "경매 진행 중이 아님";
   if (open <= 0) return "팀 인원이 꽉 참";
+  const cur = state.players.find(p => p.id === state.current);
+  if (hasGrade(state, team.idx, cur && cur.grade)) return `이미 우리 팀에 ${cur.grade}티어 선수가 있음`;
   if (state.bid_team === team.idx) return "우리 팀이 최고가";
   if (amount > team.points) return "포인트 부족";
   if (amount > maxBid(state, team)) return `빈자리 ${open - 1}칸 몫 ${c.reservePerSlot * (open - 1)}P는 남겨야 함`;
   return null;
+}
+
+/* [4-2] 경매 티어 A·B·C·D: 팀장 말고 팀마다 한 티어에 한 명씩 (게임 랭크 티어와는 다른 것) */
+const GRADES = ["A", "B", "C", "D"];
+function hasGrade(state, teamIdx, grade) {
+  return !!grade && state.players.some(p => p.team === teamIdx && p.grade === grade);
+}
+function missingGrades(state, teamIdx) {
+  if (!state.players.some(p => p.grade)) return [];
+  return GRADES.filter(g => !hasGrade(state, teamIdx, g));
+}
+function gradeBadge(p, cls = "") { return p && p.grade ? `<span class="grade g-${esc(p.grade)} ${cls}">${esc(p.grade)}</span>` : ""; }
+// 5명 단위 맞추기: 팀 수 = 전체 ÷ 팀 인원 (나머지는 늦게 신청한 사람부터 대기).
+// list: [{id, captain, order(신청 순서), score}], 돌려줌: {teams, bench: [id], grades: {id: "A"}}
+function splitGrades(list, teamSize = 5, teamsWanted = null) {
+  const teams = teamsWanted || Math.floor(list.length / teamSize);
+  const caps = list.filter(x => x.captain);
+  const rest = list.filter(x => !x.captain).sort((a, b) => a.order - b.order);   // 신청 순서
+  const need = Math.max(0, teams * teamSize - caps.length);
+  const main = rest.slice(0, need), bench = rest.slice(need);
+  const grades = {};
+  const ranked = main.slice().sort((a, b) => b.score - a.score || a.order - b.order);
+  const per = Math.max(1, Math.ceil(ranked.length / GRADES.length));
+  ranked.forEach((x, i) => { grades[x.id] = GRADES[Math.min(GRADES.length - 1, Math.floor(i / (ranked.length === teams * 4 ? teams : per)))]; });
+  // 대기 인원: 점수가 들어갈 티어 (그 티어의 가장 낮은 점수 이상이면 그 티어)
+  const floor = {}; GRADES.forEach(g => { const sc = ranked.filter(x => grades[x.id] === g).map(x => x.score); floor[g] = sc.length ? Math.min(...sc) : -Infinity; });
+  bench.forEach(x => { grades[x.id] = GRADES.find(g => x.score >= floor[g]) || "D"; });
+  return { teams, bench: bench.map(x => x.id), grades };
+}
+
+/* [4-3] 효과음 (파일 없이 브라우저가 직접 만드는 소리) */
+const SFX = (() => {
+  let ctx = null, master = null;
+  const KEY = "valo-sfx-on";
+  let on = true;
+  try { on = localStorage.getItem(KEY) !== "0"; } catch (e) { /* 저장이 막혀도 켜 둠 */ }
+  function ac() {
+    if (!ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
+      ctx = new AC(); master = ctx.createGain(); master.gain.value = 0.5; master.connect(ctx.destination);
+    }
+    if (ctx.state === "suspended") ctx.resume().catch(() => {});
+    return ctx;
+  }
+  // 브라우저는 사용자가 한 번 누르기 전에는 소리를 막으므로 첫 클릭·키에서 깨움 (OBS는 바로 됨)
+  ["pointerdown", "keydown"].forEach(ev => addEventListener(ev, () => { if (on) ac(); }, { once: false, passive: true }));
+  function tone(freq, t0, dur, { type = "sine", vol = 0.3, to = null, attack = 0.005 } = {}) {
+    const c = ac(); if (!c || !on) return;
+    const t = c.currentTime + t0, o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function noise(t0, dur, { vol = 0.2, from = 800, to = 4000 } = {}) {
+    const c = ac(); if (!c || !on) return;
+    const t = c.currentTime + t0, n = Math.floor(c.sampleRate * dur), buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    const src = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+    src.buffer = buf; f.type = "bandpass"; f.frequency.setValueAtTime(from, t); f.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(master); src.start(t); src.stop(t + dur);
+  }
+  return {
+    get on() { return on; },
+    set(v) { on = !!v; try { localStorage.setItem(KEY, on ? "1" : "0"); } catch (e) { /* */ } if (on) ac(); },
+    bid() { tone(660, 0, 0.09, { type: "square", vol: 0.12 }); tone(990, 0.06, 0.12, { type: "square", vol: 0.1 }); },
+    myBid() { tone(784, 0, 0.08, { type: "triangle", vol: 0.25 }); tone(1175, 0.07, 0.16, { type: "triangle", vol: 0.22 }); },
+    tick(urgent) { tone(urgent ? 1320 : 880, 0, 0.07, { type: "square", vol: urgent ? 0.14 : 0.08 }); },
+    lot() { noise(0, 0.35, { vol: 0.12, from: 300, to: 3000 }); tone(440, 0.12, 0.18, { type: "triangle", vol: 0.18 }); tone(660, 0.22, 0.25, { type: "triangle", vol: 0.18 }); },
+    start() { tone(523, 0, 0.12, { type: "sawtooth", vol: 0.1 }); tone(784, 0.1, 0.25, { type: "sawtooth", vol: 0.12 }); },
+    sold() {
+      noise(0, 0.08, { vol: 0.5, from: 2000, to: 200 }); tone(110, 0, 0.25, { type: "sine", vol: 0.5, to: 60 });   // 망치
+      [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.18 + i * 0.09, 0.35, { type: "triangle", vol: 0.22 }));
+      tone(1047, 0.6, 0.6, { type: "triangle", vol: 0.2 }); tone(1319, 0.6, 0.6, { type: "sine", vol: 0.12 });
+    },
+    random() { noise(0, 0.5, { vol: 0.18, from: 400, to: 5000 }); [392, 523, 659].forEach((f, i) => tone(f, 0.25 + i * 0.1, 0.3, { type: "triangle", vol: 0.18 })); },
+    unsold() { tone(392, 0, 0.25, { type: "sawtooth", vol: 0.12 }); tone(330, 0.2, 0.25, { type: "sawtooth", vol: 0.12 }); tone(262, 0.4, 0.5, { type: "sawtooth", vol: 0.12, to: 200 }); },
+    spin() { tone(1200 + Math.random() * 400, 0, 0.03, { type: "square", vol: 0.05 }); },
+    lock() { tone(880, 0, 0.12, { type: "triangle", vol: 0.25 }); tone(1320, 0.05, 0.25, { type: "sine", vol: 0.15 }); },
+    reveal() { noise(0, 0.25, { vol: 0.15, from: 500, to: 6000 }); tone(587, 0.08, 0.2, { type: "triangle", vol: 0.2 }); },
+    crown() { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, i * 0.12, 0.5, { type: "triangle", vol: 0.22 })); tone(1568, 0.65, 1.0, { type: "sine", vol: 0.18 }); noise(0.6, 0.8, { vol: 0.08, from: 3000, to: 9000 }); },
+    pause() { tone(440, 0, 0.15, { type: "sine", vol: 0.15, to: 330 }); },
+  };
+})();
+// 소리 켜기/끄기 버튼 (진행자·팀장·연습판)
+function mountSoundToggle(btn) {
+  const draw = () => { btn.textContent = SFX.on ? "소리 켜짐" : "소리 꺼짐"; btn.classList.toggle("off", !SFX.on); };
+  btn.addEventListener("click", () => { SFX.set(!SFX.on); draw(); if (SFX.on) SFX.lock(); });
+  draw();
+}
+// 상태가 바뀔 때 알맞은 소리 (진행자·팀장·방송·연습판이 함께 씀)
+function soundForState(prev, s, { myTeam = null } = {}) {
+  if (!prev) return;
+  if (s.last_result && (!prev.last_result || s.last_result.seq !== prev.last_result.seq)) {
+    const k = s.last_result.kind; if (k === "sold") SFX.sold(); else if (k === "random") SFX.random(); else SFX.unsold();
+    return;
+  }
+  if (s.current !== prev.current && s.current !== null) SFX.lot();
+  if (s.status === "running" && prev.status === "ready") SFX.start();
+  if (s.status === "paused" && prev.status === "running") SFX.pause();
+  if (s.status === "running" && prev.status === "running" && s.current === prev.current && s.bid_amount > prev.bid_amount) {
+    if (myTeam !== null && s.bid_team === myTeam) SFX.myBid(); else SFX.bid();
+  }
+}
+// 마지막 5초 째깍 (1초마다 한 번)
+function countdownTicker() {
+  let last = null;
+  return (state, leftMs) => {
+    if (!state || state.status !== "running") { last = null; return; }
+    const sec = Math.ceil(leftMs / 1000);
+    if (sec <= 5 && sec >= 1 && sec !== last) { if (last !== null) SFX.tick(sec <= 3); last = sec; }
+    else if (sec > 5) last = null;
+  };
 }
 
 /* [5] 화면 도우미 */
@@ -448,7 +575,7 @@ function resultHtml(state, { reveal = false, discord = true } = {}) {
         <div class="rt-head"><b>${esc(t.name)}</b><span class="rt-rank">점수 합계 ${rank[t.idx]}위</span><span>${roster.length}명</span></div>
         <div class="rt-nums"><div><small>남은 포인트</small><b>${t.points}P</b></div><div><small>시작</small><b>${start}P</b></div><div><small>점수 합계</small><b>${sum.toFixed(1)}</b></div><div><small>평균</small><b>${avg === null ? "-" : avg.toFixed(1)}</b></div></div>
         <table class="rt-table"><tbody>${roster.map(p => `<tr class="${p.how === "random" ? "rnd" : ""}">
-          <td>${avatar(p, 22)}</td><td><b>${esc(p.name)}</b>${discord && p.discord ? `<small>${esc(p.discord)}</small>` : ""}</td>
+          <td>${avatar(p, 22)}</td><td>${gradeBadge(p, "sm")}<b>${esc(p.name)}</b>${discord && p.discord ? `<small>${esc(p.discord)}</small>` : ""}</td>
           <td>${esc(p.pos)}</td><td class="sc">${playerScore(p).toFixed(1)}</td>
           <td class="pr">${p.how === "captain" ? "팀장" : p.how === "random" ? "무작위" : `${p.price}P`}</td></tr>`).join("")}</tbody></table>
       </div>`).join("")}</div>
@@ -458,9 +585,9 @@ function resultHtml(state, { reveal = false, discord = true } = {}) {
 // 엑셀(.xlsx) 파일: 시트1 "팀 구성", 시트2 "팀 요약" (+ 남은 선수가 있으면 시트3)
 function downloadResultXlsx(state, title) {
   const teams = resultTeams(state);
-  const rows = [["팀", "구분", "선수 닉네임", "디스코드 이름", "최고 티어", "현재 티어", "티어 점수", "포지션", "주 요원", "낙찰가", "비고"]];
+  const rows = [["팀", "구분", "경매 티어", "선수 닉네임", "디스코드 이름", "최고 티어", "현재 티어", "티어 점수", "포지션", "주 요원", "낙찰가", "비고"]];
   teams.forEach(({ team: t, roster }) => roster.forEach(p => rows.push([
-    t.name, howLabel(p), p.name, p.discord || "", p.peak, p.current, Number(playerScore(p).toFixed(1)), p.pos, agentsOf(p).join(", "),
+    t.name, howLabel(p), p.grade || "", p.name, p.discord || "", p.peak, p.current, Number(playerScore(p).toFixed(1)), p.pos, agentsOf(p).join(", "),
     p.how === "bid" ? p.price : 0, p.how === "random" ? "유찰되어 무작위로 배정됨" : p.how === "captain" ? "팀장" : ""])));
   const summary = [["팀", "팀장", "인원", "시작 포인트", "핸디캡", "쓴 포인트", "남은 포인트", "티어 점수 합계", "티어 점수 평균"]];
   teams.forEach(({ team: t, roster, start, used, sum, avg }) => summary.push([
@@ -474,14 +601,14 @@ function downloadResultXlsx(state, title) {
   if (window.XLSX) {
     const wb = XLSX.utils.book_new();
     const ws1 = XLSX.utils.aoa_to_sheet(rows);
-    ws1["!cols"] = [14, 18, 16, 16, 12, 12, 9, 9, 20, 8, 22].map(w => ({ wch: w }));
+    ws1["!cols"] = [14, 18, 8, 16, 16, 12, 12, 9, 9, 20, 8, 22].map(w => ({ wch: w }));
     const ws2 = XLSX.utils.aoa_to_sheet(summary);
     ws2["!cols"] = [16, 14, 6, 11, 8, 10, 11, 13, 13].map(w => ({ wch: w }));
     XLSX.utils.book_append_sheet(wb, ws1, "팀 구성");
     XLSX.utils.book_append_sheet(wb, ws2, "팀 요약");
     if (left.length) {
-      const ws3 = XLSX.utils.aoa_to_sheet([["선수 닉네임", "디스코드 이름", "최고 티어", "현재 티어", "티어 점수", "포지션", "주 요원", "유찰 횟수"]]
-        .concat(left.map(p => [p.name, p.discord || "", p.peak, p.current, Number(playerScore(p).toFixed(1)), p.pos, agentsOf(p).join(", "), p.unsold || 0])));
+      const ws3 = XLSX.utils.aoa_to_sheet([["경매 티어", "선수 닉네임", "디스코드 이름", "최고 티어", "현재 티어", "티어 점수", "포지션", "주 요원", "유찰 횟수"]]
+        .concat(left.map(p => [p.grade || "", p.name, p.discord || "", p.peak, p.current, Number(playerScore(p).toFixed(1)), p.pos, agentsOf(p).join(", "), p.unsold || 0])));
       XLSX.utils.book_append_sheet(wb, ws3, "팀에 못 들어간 선수");
     }
     wb.Props = { Title: title || "경매 결과" };
@@ -508,10 +635,10 @@ function playResultReveal(container, { gap = 1100 } = {}) {
   const order = cards.slice().sort((a, b) => Number(b.dataset.rank) - Number(a.dataset.rank));
   (grid._timers || []).forEach(clearTimeout);
   grid._timers = order.map((c, i) => setTimeout(() => {
-    c.classList.add("shown");
+    c.classList.add("shown"); SFX.reveal();
     if (i === order.length - 1 && c.classList.contains("top")) {
       setTimeout(() => {
-        c.classList.add("crowned");
+        c.classList.add("crowned"); SFX.crown();
         const name = c.querySelector(".rt-head b").textContent;
         flash("우승 후보", `<em>${esc(name)}</em> · 티어 점수 합계 1위`, getComputedStyle(c).getPropertyValue("--c") || "#ffd166");
       }, 350);

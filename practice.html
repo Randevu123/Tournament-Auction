@@ -33,6 +33,7 @@
     <button class="btn" id="btnNext">다음 선수</button>
     <label class="chk"><input type="checkbox" id="autoNext"> 다음 선수 자동 시작</label>
     <button class="btn" id="btnReset">처음부터 다시</button>
+    <button class="btn" id="btnSound">소리 켜짐</button>
   </div>
 </header>
 
@@ -66,7 +67,7 @@
       <div class="p-top">
         <div id="pPhoto"></div>
         <div>
-          <div class="p-name" id="pName">-</div>
+          <div class="p-name"><span id="pGrade"></span><span id="pName">-</span></div>
           <span class="p-pos" id="pPos">-</span>
           <div class="p-agents" id="pAgents"></div>
         </div>
@@ -161,6 +162,7 @@
       <h2>선수 관리</h2>
       <span class="cap-count" id="capCount"></span>
       <div class="spacer"></div>
+      <button class="btn" id="btnEdSplit">경매 티어 자동 나누기 (5명 단위)</button>
       <button class="btn" id="btnEdAdd">선수 추가</button>
       <button class="btn" id="btnEdDefault">기본값으로 되돌리기</button>
       <button class="btn" id="btnEdCancel">닫기</button>
@@ -202,7 +204,7 @@ function init() {
   stopDraw();
   profiles = loadProfiles();
   const cfg = loadCfg();
-  const players = profiles.map((p, i) => ({ id: i, name: p.name, peak: p.peak, current: p.current, pos: p.pos, captain: !!p.captain,
+  const players = profiles.filter(p => !p.bench).map((p, i) => ({ id: i, grade: p.captain ? null : (p.grade || null), name: p.name, peak: p.peak, current: p.current, pos: p.pos, captain: !!p.captain,
     motto: p.motto || "", photo: p.photo || "", score: p.score ?? null, agents: agentsOf(p), unsold: 0, team: null, price: null, how: null }));
   const caps = players.filter(p => p.captain);
   cfg.teamCount = caps.length;
@@ -215,7 +217,8 @@ function init() {
         bid_amount: 0, bid_team: null, ends_at: null, paused_left_ms: null, next_at: null, auto_start: $("autoNext").checked,
         last_result: null, events: [] };
   setScoreConfig(cfg);
-  log(`준비 — 팀장 ${teams.length}명, 경매 선수 ${P.queue.length}명, 시작 ${cfg.startPoints}P`);
+  const benchN = profiles.filter(p => p.bench).length;
+  log(`준비 — 팀장 ${teams.length}명, 경매 선수 ${P.queue.length}명, 시작 ${cfg.startPoints}P${benchN ? ` · 대기(대타) ${benchN}명` : ""}`);
   buildTeams(); render();
 }
 
@@ -233,19 +236,20 @@ function nextPlayer() {
     return render();
   }
   P.current = P.queue.shift(); P.bid_amount = 0; P.bid_team = null; P.next_at = null; P.paused_left_ms = null;
+  SFX.lot();
   if (P.auto_start) { P.status = "running"; P.ends_at = Date.now() + P.config.startSeconds * 1000; log(`${cur().name} 경매 시작 (${P.config.startSeconds}초)`); }
   else { P.status = "ready"; P.ends_at = null; }
   render();
 }
 
 function startOrResume() {
-  if (P.status === "ready") { P.status = "running"; P.ends_at = Date.now() + P.config.startSeconds * 1000; log(`${cur().name} 경매 시작 (${P.config.startSeconds}초)`); }
+  if (P.status === "ready") { P.status = "running"; P.ends_at = Date.now() + P.config.startSeconds * 1000; log(`${cur().name} 경매 시작 (${P.config.startSeconds}초)`); SFX.start(); }
   else if (P.status === "paused") { P.status = "running"; P.ends_at = Date.now() + P.paused_left_ms; P.paused_left_ms = null; log("다시 진행"); }
   render();
 }
 function pause() {
   if (P.status !== "running") return;
-  P.paused_left_ms = Math.max(0, P.ends_at - Date.now()); P.status = "paused"; P.ends_at = null; log("일시정지"); render();
+  P.paused_left_ms = Math.max(0, P.ends_at - Date.now()); P.status = "paused"; P.ends_at = null; log("일시정지"); SFX.pause(); render();
 }
 
 // 입찰 판정 (온라인 서버와 같은 순서·같은 문구)
@@ -258,12 +262,14 @@ function placeBid(idx, amount) {
   else if (!Number.isInteger(amount) || amount < P.bid_amount + c.bidStep) why = `최소 ${P.bid_amount + c.bidStep}P부터 입찰할 수 있어요.`;
   else if (amount % c.bidStep !== 0) why = `${c.bidStep}P 단위로만 입찰할 수 있어요.`;
   else if (open <= 0) why = "팀 인원이 꽉 찼어요.";
+  else if (hasGrade(P, idx, cur().grade)) why = `이미 우리 팀에 ${cur().grade}티어 선수가 있어요.`;
   else if (amount > t.points) why = "포인트가 부족해요.";
   else if (amount > t.points - reserve) why = `빈자리 ${open - 1}칸 몫 ${reserve}P는 남겨야 해요.`;
   if (why) { toast(`${t.name}: ${why}`); return; }
   const now = Date.now(), before = Math.max(0, P.ends_at - now);
   const after = Math.min(before + c.bidAddSeconds * 1000, c.maxSeconds * 1000);
   P.ends_at = now + after; P.bid_amount = amount; P.bid_team = idx;
+  SFX.bid();
   log(`${t.name} ${amount}P 입찰 · 시간 ${(before / 1000).toFixed(1)}초 → ${(after / 1000).toFixed(1)}초`, "bid");
   render();
   bumpEl($("bidAmount"), "bump");
@@ -282,7 +288,7 @@ function finishLot() {
   } else {
     p.unsold++;
     if (p.unsold >= P.config.maxUnsold) {
-      const open = P.teams.filter(t => openOf(t.idx) > 0);
+      const open = P.teams.filter(t => openOf(t.idx) > 0 && !hasGrade(P, t.idx, p.grade));
       if (open.length) {
         const t = open[Math.floor(Math.random() * open.length)];
         p.team = t.idx; p.price = 0; p.how = "random";
@@ -296,6 +302,7 @@ function finishLot() {
     }
   }
   P.status = "result"; P.ends_at = null; P.paused_left_ms = null; P.next_at = Date.now() + P.config.resultShowMs;
+  ({ sold: SFX.sold, random: SFX.random, unsold: SFX.unsold })[P.last_result.kind]();
   flashResult(P); render();
 }
 
@@ -326,11 +333,11 @@ function startDraw() {
 function showRoulette(p, locked, no) {
   $("roulette").classList.toggle("locked", locked);
   $("rNo").textContent = `${no}번`; $("rPhoto").innerHTML = avatar(p, 150); $("rName").textContent = p.name;
-  $("rSub").textContent = locked ? `${p.pos} · ${p.peak} / ${p.current}` : "";
+  $("rSub").textContent = locked ? `${p.grade ? p.grade + "티어 · " : ""}${p.pos} · ${p.peak} / ${p.current}` : "";
 }
 function appendOrder(i, id) {
   const p = pById(id), li = document.createElement("li");
-  li.innerHTML = `<b>${i + 1}</b>${avatar(p, 32)}<span>${esc(p.name)}</span>`;
+  li.innerHTML = `<b>${i + 1}</b>${avatar(p, 32)}<span>${gradeBadge(p, "sm")}${esc(p.name)}</span>`;
   $("orderList").appendChild(li);
 }
 function stepDraw() {
@@ -338,8 +345,8 @@ function stepDraw() {
   const remaining = drawOrder.slice(drawIndex);
   let spins = 0; const total = remaining.length > 1 ? 7 : 0;
   const spin = () => {
-    if (spins < total) { showRoulette(pById(remaining[Math.floor(Math.random() * remaining.length)]), false, drawIndex + 1); spins++; drawTimer = setTimeout(spin, 35 + spins * 12); }
-    else { showRoulette(pById(drawOrder[drawIndex]), true, drawIndex + 1); appendOrder(drawIndex, drawOrder[drawIndex]); drawIndex++; drawTimer = setTimeout(stepDraw, 380); }
+    if (spins < total) { showRoulette(pById(remaining[Math.floor(Math.random() * remaining.length)]), false, drawIndex + 1); SFX.spin(); spins++; drawTimer = setTimeout(spin, 35 + spins * 12); }
+    else { showRoulette(pById(drawOrder[drawIndex]), true, drawIndex + 1); SFX.lock(); appendOrder(drawIndex, drawOrder[drawIndex]); drawIndex++; drawTimer = setTimeout(stepDraw, 380); }
   };
   spin();
 }
@@ -354,7 +361,7 @@ $("btnDrawDone").onclick = () => { $("drawOverlay").classList.remove("show"); co
 let manualOrder = [];
 function renderOrder() {
   $("orderEdit").innerHTML = manualOrder.map((id, i) => { const p = pById(id);
-    return `<li data-i="${i}"><span class="no">${i + 1}</span>${avatar(p, 26)}<span class="nm">${esc(p.name)} <span style="color:var(--muted);font-size:12px">${esc(p.pos)} · ${playerScore(p).toFixed(1)}</span></span>
+    return `<li data-i="${i}"><span class="no">${i + 1}</span>${avatar(p, 26)}<span class="nm">${gradeBadge(p, "sm")}${esc(p.name)} <span style="color:var(--muted);font-size:12px">${esc(p.pos)} · ${playerScore(p).toFixed(1)}</span></span>
       <button data-mv="-1" ${i === 0 ? "disabled" : ""}>▲</button><button data-mv="1" ${i === manualOrder.length - 1 ? "disabled" : ""}>▼</button></li>`; }).join("");
 }
 $("btnOrder").onclick = () => { if (!canOrder()) return; manualOrder = [...P.queue]; renderOrder(); $("orderOverlay").classList.add("show"); };
@@ -431,6 +438,10 @@ function buildEditor() {
           <label class="ed-cap"><input type="checkbox" data-f="captain" ${p.captain ? "checked" : ""}> 팀장</label>
         </div>
         <div class="row2">
+          <div><small>경매 티어</small><select data-f="grade" ${p.captain ? "disabled" : ""}><option value="">없음</option>${GRADES.map(g => `<option ${g === p.grade ? "selected" : ""}>${g}</option>`).join("")}</select></div>
+          <label class="ed-cap"><input type="checkbox" data-f="bench" ${p.bench ? "checked" : ""} ${p.captain ? "disabled" : ""}> 대기 (대타)</label>
+        </div>
+        <div class="row2">
           <div><small>점수 직접 입력 (비우면 자동)</small><input class="score-in" data-f="score" type="number" step="0.1" min="0" max="1000" placeholder="${autoScore(p).toFixed(1)}" value="${p.score ?? ""}"></div>
           <div><small>자동 점수</small><div class="calc" data-auto>${scoreFormula(p)}</div></div>
         </div>
@@ -441,13 +452,19 @@ function buildEditor() {
 }
 function updateCapCount() {
   const n = draft.filter(p => p.captain).length, el = $("capCount");
-  el.textContent = `팀장 ${n}명 (= 팀 ${n}개, 최대 8) · 전체 ${draft.length}명`;
-  el.className = "cap-count " + (n >= 1 && n <= 8 ? "good" : "bad");
+  const bench = draft.filter(p => p.bench && !p.captain).length, play = draft.length - bench;
+  const cnt = GRADES.map(g => draft.filter(p => !p.captain && !p.bench && p.grade === g).length);
+  const graded = cnt.some(Boolean);
+  const ok = n >= 1 && n <= 8 && (!graded || cnt.every(x => x === n));
+  el.textContent = `팀장 ${n}명 (= 팀 ${n}개, 최대 8) · 참가 ${play}명${bench ? ` · 대기 ${bench}명` : ""}${graded ? ` · 티어 ${GRADES.map((g, i) => `${g} ${cnt[i]}`).join(" / ")}` : ""}`;
+  el.className = "cap-count " + (ok ? "good" : "bad");
 }
 $("edGrid").addEventListener("input", e => {
   const card = e.target.closest(".ed"); if (!card) return;
   const p = draft[card.dataset.i], f = e.target.dataset.f;
-  if (f === "captain") { p.captain = e.target.checked; card.classList.toggle("captain", p.captain); updateCapCount(); }
+  if (f === "captain") { p.captain = e.target.checked; if (p.captain) { p.grade = null; p.bench = false; } buildEditor(); return; }
+  else if (f === "bench") { p.bench = e.target.checked; updateCapCount(); }
+  else if (f === "grade") { p.grade = e.target.value || null; updateCapCount(); }
   else if (f === "score") p.score = e.target.value === "" ? null : Number(e.target.value);
   else if (f) p[f] = e.target.value;
   if (f === "peak" || f === "current") { card.querySelector("[data-auto]").textContent = scoreFormula(p); card.querySelector('[data-f="score"]').placeholder = autoScore(p).toFixed(1); }
@@ -475,8 +492,17 @@ function resizePhoto(file) {
     img.src = url;
   });
 }
+// 5명 단위로 맞추고(늦게 추가한 선수부터 대기) 점수 순으로 A~D 나누기. 팀 수 = 전체 ÷ 5 (팀장이 그 수만큼 있어야 함)
+$("btnEdSplit").onclick = () => {
+  const sp = splitGrades(draft.map((p, i) => ({ id: i, captain: !!p.captain, order: i, score: playerScore(p) })), 5);
+  const caps = draft.filter(p => p.captain).length;
+  draft.forEach((p, i) => { p.grade = p.captain ? null : sp.grades[i]; p.bench = sp.bench.includes(i); });
+  buildEditor();
+  toast(caps === sp.teams ? `${draft.length}명 → ${sp.teams}팀, 대기 ${sp.bench.length}명. 점수 순으로 A~D를 나눴어요.`
+    : `${draft.length}명이면 ${sp.teams}팀이에요. 팀장을 ${sp.teams}명으로 맞춰 주세요. (지금 ${caps}명)`);
+};
 $("btnEdAdd").onclick = () => { draft.push({ name: `새 선수 ${draft.length + 1}`, peak: "골드 1", current: "골드 1", pos: "타격대", captain: false, motto: "", photo: "", score: null }); buildEditor(); $("edGrid").lastElementChild.scrollIntoView(); };
-$("btnEdDefault").onclick = () => { if (confirm("가짜 선수 25명 기본값으로 되돌릴까요? (저장을 눌러야 반영돼요)")) { draft = seedProfiles(); buildEditor(); } };
+$("btnEdDefault").onclick = () => { if (confirm("가짜 선수 31명(6팀 + 대기 1명) 기본값으로 되돌릴까요? (저장을 눌러야 반영돼요)")) { draft = seedProfiles(); buildEditor(); } };
 $("btnEdCancel").onclick = () => $("editOverlay").classList.remove("show");
 $("btnEdSave").onclick = () => {
   const names = draft.map(p => (p.name || "").trim());
@@ -484,6 +510,11 @@ $("btnEdSave").onclick = () => {
   if (new Set(names).size !== names.length) return toast("같은 닉네임이 두 번 있어요.");
   const caps = draft.filter(p => p.captain).length;
   if (caps < 1 || caps > 8) return toast("팀장은 1명에서 8명 사이로 정해 주세요.");
+  const cnt = GRADES.map(g => draft.filter(p => !p.captain && !p.bench && p.grade === g).length);
+  if (cnt.some(Boolean)) {
+    if (draft.some(p => !p.captain && !p.bench && !p.grade)) return toast("경매 티어가 없는 선수가 있어요. ‘경매 티어 자동 나누기’를 눌러 보세요.");
+    if (cnt.some(x => x !== caps)) return toast(`경매 티어는 팀 수(${caps})만큼씩 있어야 해요. 지금 ${GRADES.map((g, i) => `${g} ${cnt[i]}`).join(" / ")}`);
+  }
   if (draft.some(p => p.score != null && !(p.score >= 0 && p.score <= 1000))) return toast("점수는 0에서 1000 사이로 적어 주세요.");
   if (!saveProfiles(draft.map(({ id, ...p }) => ({ ...p, name: p.name.trim(), motto: (p.motto || "").trim() })))) return;
   $("editOverlay").classList.remove("show");
@@ -494,6 +525,7 @@ $("btnEdit").onclick = openEditor; $("btnEdit2").onclick = openEditor;
 /* ---------- 화면 그리기 (온라인 진행자 화면과 같은 모양 + 팀별 입찰 버튼) ---------- */
 function buildTeams() {
   const wrap = $("teams"); wrap.innerHTML = "";
+  wrap.style.setProperty("--tn", Math.max(1, P.teams.length));
   for (const t of P.teams) {
     const el = document.createElement("div");
     el.className = "team"; el.dataset.id = t.idx; el.style.setProperty("--c", t.color);
@@ -522,6 +554,7 @@ function blockReason(t, amount) {
   if (P.status !== "running") return "경매 진행 중이 아님";
   if (open <= 0) return "팀 인원이 꽉 참";
   if (P.bid_team === t.idx) return "현재 최고가 팀";
+  if (cur() && hasGrade(P, t.idx, cur().grade)) return `이미 ${cur().grade}티어 선수가 있음`;
   if (amount > t.points) return "포인트 부족";
   if (amount > maxBidOf(t)) return `빈자리 ${open - 1}칸 몫 ${c.reservePerSlot * (open - 1)}P는 남겨야 함`;
   return null;
@@ -548,6 +581,7 @@ function render() {
   const p = s.current !== null ? cur() : null;
   $("pPhoto").innerHTML = p ? avatar(p, 130) : "";
   $("pName").textContent = p ? p.name : (s.status === "done" ? "경매 종료" : "-");
+  $("pGrade").innerHTML = p ? gradeBadge(p, "lg") : "";
   $("pPos").textContent = p ? p.pos : "-";
   $("pAgents").innerHTML = p ? agentChips(p, "lg", 26) : "";
   $("pMotto").textContent = p && p.motto ? `“${p.motto}”` : "";
@@ -570,7 +604,7 @@ function render() {
   $("progress").textContent = `자리 ${s.players.filter(x => x.team !== null).length} / ${s.teams.length * c.teamSize}`;
   const queue = s.queue.map(pById);
   $("queue").innerHTML = queue.length
-    ? queue.map((q, i) => `<li><span class="n">${setup ? "·" : i + 1}</span>${avatar(q, 24)}<span class="nm">${esc(q.name)}</span>${q.unsold ? `<span class="tag-unsold">유찰 ${q.unsold}</span>` : ""}<span>${playerScore(q).toFixed(1)}</span></li>`).join("")
+    ? queue.map((q, i) => `<li><span class="n">${setup ? "·" : i + 1}</span>${avatar(q, 24)}<span class="nm">${gradeBadge(q, "sm")}${esc(q.name)}</span>${q.unsold ? `<span class="tag-unsold">유찰 ${q.unsold}</span>` : ""}<span>${playerScore(q).toFixed(1)}</span></li>`).join("")
     : `<li><span class="nm" style="color:var(--muted)">대기 선수 없음</span></li>`;
   $("log").innerHTML = eventsHtml(s.events);
   for (const t of s.teams) {
@@ -584,9 +618,10 @@ function render() {
     el.querySelector('[data-k="max"]').innerHTML = open > 0 ? `최대 입찰 가능 <b>${maxBidOf(t)}P</b>${open > 1 ? ` · 빈자리 몫 ${c.reservePerSlot * (open - 1)}P 보관` : ""}` : "팀 완성";
     el.querySelector('[data-k="sum"]').textContent = sum.toFixed(1);
     el.querySelector('[data-k="avg"]').textContent = avg === null ? "-" : avg.toFixed(1);
-    const rows = roster.map(r => `<li><span class="who">${avatar(r, 22)}<span>${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
+    const rows = roster.map(r => `<li><span class="who">${avatar(r, 22)}<span>${gradeBadge(r, "sm")}${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
       r.how === "captain" ? `<span class="pr cap">팀장</span>` : r.how === "random" ? `<span class="pr rnd">무작위</span>` : `<span class="pr">${r.price}P</span>`}</li>`);
-    while (rows.length < c.teamSize) rows.push(`<li class="empty">빈자리</li>`);
+    const miss = missingGrades(s, t.idx);
+    while (rows.length < c.teamSize) rows.push(`<li class="empty">빈자리${miss.length ? ` <span style="margin-left:6px">${miss.shift()}</span>` : ""}</li>`);
     el.querySelector('[data-k="roster"]').innerHTML = rows.join("");
     el.classList.toggle("leading", s.bid_team === t.idx && s.status === "running");
     let why = null, anyOk = false;
@@ -602,9 +637,11 @@ function render() {
   }
 }
 
+const tickSound = countdownTicker();
 function renderTimer() {
   if (P) {
     const left = P.status === "running" ? Math.max(0, P.ends_at - Date.now()) : P.status === "paused" ? P.paused_left_ms : P.status === "ready" ? P.config.startSeconds * 1000 : 0;
+    tickSound(P, left);
     const num = $("timerNum");
     num.textContent = ["done", "result", "setup"].includes(P.status) ? "-" : (left / 1000).toFixed(1);
     num.classList.toggle("low", P.status === "running" && left < 5000);
@@ -634,6 +671,7 @@ document.addEventListener("keydown", e => {
   if (P.status === "running") pause(); else startOrResume();
 });
 
+mountSoundToggle($("btnSound"));
 init();
 </script>
 </body>

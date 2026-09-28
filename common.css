@@ -125,7 +125,7 @@
   .log li.bid { border-left-color: var(--ok); }
 
   /* ---------- 팀 영역 ---------- */
-  .teams { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; padding: 0 20px 24px; }
+  .teams { display: grid; grid-template-columns: repeat(var(--tn, 5), minmax(0, 1fr)); gap: 14px; padding: 0 20px 24px; }
   .team {
     background: var(--panel); border: 1px solid var(--line); border-top: 5px solid var(--c);
     border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
@@ -396,3 +396,11 @@
 .agent-pick button { display: inline-flex; align-items: center; gap: 5px; }
 .agent-pick .ag-ic { width: 22px; height: 22px; }
 .riot-notice { font-size: 11px; color: #5b6378; line-height: 1.5; text-align: center; }
+
+/* 경매 티어 A~D */
+.grade { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px; font-family: var(--num); font-size: 15px; color: #0b0d14; margin-right: 6px; vertical-align: middle; }
+.grade.g-A { background: #ffd166; } .grade.g-B { background: #b67cff; } .grade.g-C { background: #4da3ff; } .grade.g-D { background: #3ddc97; }
+.grade.sm { min-width: 17px; height: 17px; font-size: 12px; padding: 0 4px; margin-right: 4px; border-radius: 4px; }
+.grade.lg { min-width: 40px; height: 40px; font-size: 26px; border-radius: 10px; }
+.bench-chip { font-size: 11px; font-weight: 900; color: var(--warn); border: 1px solid var(--warn); border-radius: 999px; padding: 1px 7px; margin-left: 4px; }
+.btn.off { opacity: .6; }

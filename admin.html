@@ -490,7 +490,7 @@ function renderPeople() {
           <td><button class="star ${s.captain ? "on" : ""}" data-cap="${s.id}" title="팀장 배정" ${RO ? "disabled" : ""}>★</button></td>
           <td>${detail.signups.indexOf(s) + 1}</td>
           <td><div class="dc">${discordImg(s.discord_avatar, s.discord_name, 26)}<div><b>${esc(s.discord_name)}</b>${s.discord_username ? `<small>@${esc(s.discord_username)}</small>` : ""}</div></div></td>
-          <td><b>${esc(s.nick)}</b>${s.updated_by ? `<div class="calc">${esc(s.updated_by)} 님이 고침</div>` : ""}</td>
+          <td>${gradeBadge(s, "sm")}<b>${esc(s.nick)}</b>${s.bench ? `<span class="bench-chip">대기</span>` : ""}${s.updated_by ? `<div class="calc">${esc(s.updated_by)} 님이 고침</div>` : ""}</td>
           <td>${esc(s.peak)}</td><td>${esc(s.current)}</td><td>${esc(s.pos)}${agentChips(s, "sm")}</td>
           <td><span class="score">${playerScore(s).toFixed(1)}</span>${s.score != null ? `<div class="calc">직접 정함</div>` : ""}</td>
           <td>${checkCell(s, "tier")}</td>
@@ -562,6 +562,9 @@ function renderPrep() {
   const sigs = detail.signups;
   if (!d.caps) d.caps = sigs.filter(x => x.captain).map(x => x.id);
   d.caps = d.caps.filter(id => sigs.some(x => x.id === id));
+  if (!d.benchLoaded) { sigs.filter(x => x.bench && !d.caps.includes(x.id)).forEach(x => d.excluded.add(x.id)); d.benchLoaded = true; }   // 지난번 대기 명단
+  if (!d.grades) d.grades = {};
+  sigs.forEach(x => { if (!(x.id in d.grades)) d.grades[x.id] = x.grade || ""; });
   if (!d.settings) d.settings = { startPoints: cfg.startPoints, bidStep: cfg.bidStep, teamSize: cfg.teamSize, reservePerSlot: cfg.reservePerSlot,
     peakWeight: peakWeight(cfg), tierScores: { ...TIER_SCORE, ...(cfg.tierScores || {}) }, handicaps: Object.fromEntries(st.teams.map(t => [t.idx, t.handicap || 0])) };
   if (!setup || !d.order) d.order = [...st.queue];
@@ -569,6 +572,10 @@ function renderPrep() {
   const dis = !can || !setup || e.locked ? "disabled" : "";
   const nPlayers = sigs.filter(x => !d.caps.includes(x.id) && !d.excluded.has(x.id)).length;
   const slots = d.caps.length * (d.settings.teamSize - 1);
+  const teamsBy5 = Math.floor(sigs.length / 5), benchBy5 = sigs.length - teamsBy5 * 5;
+  const playing = sigs.filter(x => !d.caps.includes(x.id) && !d.excluded.has(x.id));
+  const gCnt = GRADES.map(g => playing.filter(x => d.grades[x.id] === g).length);
+  const graded = gCnt.some(Boolean);
   const members = window.members.filter(m => m.role !== "pending");
   const S = d.settings;
   $("tabBody").innerHTML = `
@@ -588,19 +595,24 @@ function renderPrep() {
     <div class="card prep-step ${!can || !setup ? "locked" : ""}">
       <h3><span class="n">1</span>명단 · 팀장 · 핸디캡 → 경매 선수 채우기</h3>
       ${setup ? "" : `<div class="warn-note">경매가 시작돼서 명단을 다시 채울 수 없어요. (진행자 화면의 ‘처음부터 다시’로 준비 단계로 돌아갈 수 있어요)</div>`}
+      <div class="prep-bar">신청 <b>${sigs.length}</b>명 → 5명 단위 <b>${teamsBy5}</b>팀 (${teamsBy5 * 5}명 참가${benchBy5 ? `, 늦게 신청한 ${benchBy5}명은 대기` : ""})
+        <button class="btn" id="btnSplit" ${dis || !sigs.length ? "disabled" : ""} style="margin-left:8px">5명 단위로 맞추고 경매 티어 A~D 나누기</button></div>
+      <div class="prep-bar">경매 티어 ${GRADES.map((g, i) => `${gradeBadge({ grade: g }, "sm")}<b>${gCnt[i]}</b>`).join(" ")}
+        ${graded && gCnt.some(x => x !== d.caps.length) ? `<span class="warn"> — 티어마다 팀 수(${d.caps.length})만큼 있어야 해요</span>` : graded ? `<span style="color:var(--ok)"> — 팀마다 A·B·C·D 한 명씩</span>` : `<span style="color:var(--muted)"> — 아직 안 나눴어요 (안 나누면 티어 없이 경매)</span>`}</div>
       <div class="prep-bar">팀장 <b>${d.caps.length}</b>명 → 팀 <b>${d.caps.length}</b>개 · 경매 선수 <b>${nPlayers}</b>명 · 팀원 자리 ${slots}칸
         ${d.caps.length && nPlayers !== slots ? `<span class="warn"> — 선수가 자리보다 ${Math.abs(nPlayers - slots)}명 ${nPlayers < slots ? "적어요 (빈자리가 남아도 경매는 할 수 있어요)" : "많아요 (남는 선수는 팀에 못 들어가요)"}</span>` : ""}</div>
       <div class="table-wrap"><table class="prep-table">
-        <thead><tr><th>포함</th><th>팀장 (누른 순서 = 팀 순서)</th><th>핸디캡</th><th>게임 닉네임</th><th>디스코드</th><th>최고/현재</th><th>점수</th><th>검수</th></tr></thead>
+        <thead><tr><th>포함</th><th>팀장 (누른 순서 = 팀 순서)</th><th>핸디캡</th><th>경매 티어</th><th>게임 닉네임</th><th>디스코드</th><th>최고/현재</th><th>점수</th><th>검수</th></tr></thead>
         <tbody>${sigs.map(x => { const no = d.caps.indexOf(x.id) + 1, inc = no > 0 || !d.excluded.has(x.id);
           return `<tr class="${inc ? "" : "excluded"} ${no ? "cap" : ""}" data-sid="${x.id}">
             <td><input type="checkbox" data-inc ${inc ? "checked" : ""} ${no ? "disabled" : ""} ${dis}></td>
             <td><button class="star ${no ? "on" : ""}" data-cap ${dis}>${no ? `★ ${no}팀` : "★"}</button></td>
             <td>${no ? `<input type="number" data-hc min="0" step="${S.bidStep}" value="${d.handicaps[x.id] || 0}" ${dis}>` : ""}</td>
-            <td><b>${esc(x.nick)}</b></td><td>${esc(x.discord_name)}</td><td>${esc(x.peak)} / ${esc(x.current)}</td>
+            <td>${no ? `<span style="color:var(--muted);font-size:12px">팀장</span>` : `<select data-grade ${dis}><option value="">-</option>${GRADES.map(g => `<option ${d.grades[x.id] === g ? "selected" : ""}>${g}</option>`).join("")}</select>`}</td>
+            <td><b>${esc(x.nick)}</b>${!inc ? `<span class="bench-chip">대기</span>` : ""}</td><td>${esc(x.discord_name)}</td><td>${esc(x.peak)} / ${esc(x.current)}</td>
             <td><span class="score">${playerScore(x).toFixed(1)}</span>${x.score != null ? `<div class="calc">직접 정함</div>` : ""}</td>
             <td>${isDone(x, "tier") && isDone(x, "score") ? `<span class="chip done">완료</span>` : `<span class="chip part">덜 됨</span>`}</td></tr>`; }).join("")
-          || `<tr><td colspan="8" style="color:var(--muted);padding:20px;text-align:center">아직 신청이 없어요.</td></tr>`}</tbody>
+          || `<tr><td colspan="9" style="color:var(--muted);padding:20px;text-align:center">아직 신청이 없어요.</td></tr>`}</tbody>
       </table></div>
       <div style="color:var(--muted);font-size:12px">티어·점수는 ‘참가자’ 탭의 ‘고치기’에서 바꿔요(부계정은 점수 직접 입력). 경매 선수를 채운 뒤에 고쳐도 경매 화면에 바로 반영돼요.</div>
       <div><button class="btn primary" id="btnFill" ${!can || !setup || e.locked || !d.caps.length ? "disabled" : ""}>이 명단으로 경매 선수 채우기</button>
@@ -660,9 +672,17 @@ function renderPrep() {
       if (bad !== undefined) return toast(`핸디캡은 시작 포인트(${S.startPoints}P)보다 작아야 해요.`);
       if (st.players.length && !confirm("지금 경매 선수 명단을 이 명단으로 바꿀까요?")) return;
       const handicaps = {}; d.caps.forEach(id => { handicaps[id] = d.handicaps[id] || 0; });
-      const r = await hostAct("load_signups", { captains: d.caps, exclude: [...d.excluded], handicaps });
+      const r = await hostAct("load_signups", { captains: d.caps, exclude: [...d.excluded], handicaps, grades: d.grades });
       if (r && r.ok) { d.settings = null; d.order = null; toast(`팀장 ${d.caps.length}명으로 경매 선수를 채웠어요.`); }
       return;
+    }
+    if (t.id === "btnSplit") {
+      const sp = splitGrades(sigs.map(x => ({ id: x.id, captain: d.caps.includes(x.id), order: x.id, score: playerScore(x) })), 5);
+      d.excluded = new Set(sp.bench); sigs.forEach(x => { d.grades[x.id] = d.caps.includes(x.id) ? "" : sp.grades[x.id] || ""; });
+      if (S.teamSize !== 5) S.teamSize = 5;
+      toast(d.caps.length === sp.teams ? `${sp.teams}팀으로 맞추고 점수 순으로 A~D를 나눴어요. 대기 ${sp.bench.length}명도 티어를 붙였어요.`
+        : `${sigs.length}명이면 ${sp.teams}팀이에요. 팀장(★)을 ${sp.teams}명으로 맞춘 뒤 다시 눌러 주세요. (지금 ${d.caps.length}명)`);
+      return renderPrep();
     }
     if (t.id === "btnTierDef") { S.tierScores = { ...TIER_SCORE }; return renderPrep(); }
     if (t.id === "btnSetSave") return saveSettings();
@@ -678,6 +698,7 @@ function renderPrep() {
   };
   body.onchange = ev => {
     const tr = ev.target.closest("[data-sid]");
+    if (tr && ev.target.matches("[data-grade]")) { d.grades[Number(tr.dataset.sid)] = ev.target.value; return renderPrep(); }
     if (tr && ev.target.matches("[data-inc]")) { const id = Number(tr.dataset.sid); if (ev.target.checked) d.excluded.delete(id); else d.excluded.add(id); renderPrep(); }
   };
   body.oninput = ev => {
@@ -857,9 +878,9 @@ async function downloadLogCsv(scope) {
 function downloadPeopleCsv() {
   if (!detail || !detail.signups.length) return toast("내려받을 신청이 없어요.");
   const names = (x, kind) => checksOf(x, kind).map(c => c.name).join(" / ");
-  const rows = [["번호", "게임 닉네임", "디스코드 이름", "디스코드 아이디", "최고 티어", "현재 티어", "포지션", "주 요원",
+  const rows = [["번호", "게임 닉네임", "디스코드 이름", "디스코드 아이디", "최고 티어", "현재 티어", "포지션", "주 요원", "경매 티어", "대기(대타)",
                  "티어 점수(최종)", "자동 점수", "직접 정한 점수", "팀장", "티어 검수", "티어 검수한 사람", "점수 재확인", "점수 재확인한 사람", "메모", "신청 시각"]]
-    .concat(detail.signups.map((x, i) => [i + 1, x.nick, x.discord_name, x.discord_username ? "@" + x.discord_username : "", x.peak, x.current, x.pos, agentsOf(x).join(", "),
+    .concat(detail.signups.map((x, i) => [i + 1, x.nick, x.discord_name, x.discord_username ? "@" + x.discord_username : "", x.peak, x.current, x.pos, agentsOf(x).join(", "), x.grade || "", x.bench ? "대기" : "",
       playerScore(x).toFixed(1), autoScore(x).toFixed(1), x.score != null ? Number(x.score).toFixed(1) : "", x.captain ? "팀장" : "",
       `${checksOf(x, "tier").length}/${NEED_CHECKS}${isDone(x, "tier") ? " 완료" : ""}`, names(x, "tier"),
       `${checksOf(x, "score").length}/${NEED_CHECKS}${isDone(x, "score") ? " 완료" : ""}`, names(x, "score"), x.memo || "", csvStamp(x.at)]));

@@ -45,6 +45,7 @@
     <button class="btn" id="btnNext">다음 선수</button>
     <label class="chk"><input type="checkbox" id="autoNext"> 다음 선수 자동 시작</label>
     <button class="btn" id="btnReset">처음부터 다시</button>
+    <button class="btn" id="btnSound">소리 켜짐</button>
   </div>
 </header>
 
@@ -74,7 +75,7 @@
       <div class="p-top">
         <div id="pPhoto"></div>
         <div>
-          <div class="p-name" id="pName">-</div>
+          <div class="p-name"><span id="pGrade"></span><span id="pName">-</span></div>
           <span class="p-pos" id="pPos">-</span>
           <div class="p-agents" id="pAgents"></div>
         </div>
@@ -275,6 +276,7 @@ function onState(s) {
   const prev = S;
   S = s;
   setScoreConfig(s.config);
+  soundForState(prev, s);
   if (lastSeq === null) lastSeq = s.last_result ? s.last_result.seq : 0;
   else if (s.last_result && s.last_result.seq > lastSeq) { lastSeq = s.last_result.seq; flashResult(s); }
   // 입찰로 늘어난 시간 보여 주기
@@ -439,11 +441,11 @@ function showRoulette(p, locked, no) {
   $("rNo").textContent = `${no}번`;
   $("rPhoto").innerHTML = avatar(p, 150);
   $("rName").textContent = p.name;
-  $("rSub").textContent = locked ? `${p.pos} · ${p.peak} / ${p.current}` : "";
+  $("rSub").textContent = locked ? `${p.grade ? p.grade + "티어 · " : ""}${p.pos} · ${p.peak} / ${p.current}` : "";
 }
 function appendOrder(i, p) {
   const li = document.createElement("li");
-  li.innerHTML = `<b>${i + 1}</b>${avatar(p, 32)}<span>${esc(p.name)}</span>`;
+  li.innerHTML = `<b>${i + 1}</b>${avatar(p, 32)}<span>${gradeBadge(p, "sm")}${esc(p.name)}</span>`;
   $("orderList").appendChild(li);
 }
 function stepDraw() {
@@ -454,10 +456,10 @@ function stepDraw() {
   const spin = () => {
     if (spins < totalSpins) {
       showRoulette(remaining[Math.floor(Math.random() * remaining.length)], false, drawIndex + 1);
-      spins++;
+      SFX.spin(); spins++;
       drawTimer = setTimeout(spin, 35 + spins * 12);
     } else {
-      showRoulette(drawOrder[drawIndex], true, drawIndex + 1);
+      showRoulette(drawOrder[drawIndex], true, drawIndex + 1); SFX.lock();
       appendOrder(drawIndex, drawOrder[drawIndex]);
       drawIndex++;
       drawTimer = setTimeout(stepDraw, 380);
@@ -490,7 +492,7 @@ $("btnDrawDone").addEventListener("click", async () => {
 let draft = [];
 function openEditor() {
   if (!S || S.status !== "setup") return toast("경매 중에는 고칠 수 없어요. ‘처음부터 다시’를 누른 뒤 고쳐 주세요.");
-  draft = S.players.map(p => ({ name: p.name, peak: p.peak, current: p.current, pos: p.pos, captain: p.captain, motto: p.motto, photo: p.photo || "", signup_id: p.signup_id, score: p.score, agents: agentsOf(p) }));
+  draft = S.players.map(p => ({ name: p.name, peak: p.peak, current: p.current, pos: p.pos, captain: p.captain, motto: p.motto, photo: p.photo || "", signup_id: p.signup_id, score: p.score, agents: agentsOf(p), grade: p.grade || null }));
   buildEditor();
   $("editOverlay").classList.add("show");
 }
@@ -580,6 +582,7 @@ $("btnEdSave").addEventListener("click", async () => {
 function buildTeams() {
   const wrap = $("teams");
   wrap.innerHTML = "";
+  wrap.style.setProperty("--tn", Math.max(1, S.teams.length));   // 6팀이어도 한 줄에
   for (const t of S.teams) {
     const el = document.createElement("div");
     el.className = "team";
@@ -622,6 +625,7 @@ function render(prev) {
   const p = s.players.find(x => x.id === s.current) || null;
   $("pPhoto").innerHTML = p ? avatar(p, 130) : "";
   $("pName").textContent = p ? p.name : (s.status === "done" ? "경매 종료" : "-");
+  $("pGrade").innerHTML = p ? gradeBadge(p, "lg") : "";
   $("pPos").textContent = p ? p.pos : "-";
   $("pAgents").innerHTML = p ? agentChips(p, "lg", 26) : "";
   $("pMotto").textContent = p && p.motto ? `“${p.motto}”` : "";
@@ -650,7 +654,7 @@ function render(prev) {
 
   const queue = s.queue.map(id => s.players.find(x => x.id === id)).filter(Boolean);
   $("queue").innerHTML = queue.length
-    ? queue.map((q, i) => `<li><span class="n">${setup ? "·" : i + 1}</span>${avatar(q, 24)}<span class="nm">${esc(q.name)}</span>${q.unsold ? `<span class="tag-unsold">유찰 ${q.unsold}</span>` : ""}<span>${playerScore(q).toFixed(1)}</span></li>`).join("")
+    ? queue.map((q, i) => `<li><span class="n">${setup ? "·" : i + 1}</span>${avatar(q, 24)}<span class="nm">${gradeBadge(q, "sm")}${esc(q.name)}</span>${q.unsold ? `<span class="tag-unsold">유찰 ${q.unsold}</span>` : ""}<span>${playerScore(q).toFixed(1)}</span></li>`).join("")
     : `<li><span class="nm" style="color:var(--muted)">대기 선수 없음</span></li>`;
 
   $("log").innerHTML = eventsHtml(s.events);
@@ -668,17 +672,20 @@ function render(prev) {
       ? `최대 입찰 가능 <b>${maxBid(s, t)}P</b>${open > 1 ? ` · 빈자리 몫 ${c.reservePerSlot * (open - 1)}P 보관` : ""}` : "팀 완성";
     el.querySelector('[data-k="sum"]').textContent = sum.toFixed(1);
     el.querySelector('[data-k="avg"]').textContent = avg === null ? "-" : avg.toFixed(1);
-    const rows = roster.map(r => `<li><span class="who">${avatar(r, 22)}<span>${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
+    const rows = roster.map(r => `<li><span class="who">${avatar(r, 22)}<span>${gradeBadge(r, "sm")}${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
       r.how === "captain" ? `<span class="pr cap">팀장</span>` : r.how === "random" ? `<span class="pr rnd">무작위</span>` : `<span class="pr">${r.price}P</span>`}</li>`);
-    while (rows.length < c.teamSize) rows.push(`<li class="empty">빈자리</li>`);
+    const miss = missingGrades(s, t.idx);
+    while (rows.length < c.teamSize) rows.push(`<li class="empty">빈자리${miss.length ? ` <span style="margin-left:6px">${miss.shift()}</span>` : ""}</li>`);
     el.querySelector('[data-k="roster"]').innerHTML = rows.join("");
     el.classList.toggle("leading", s.bid_team === t.idx && s.status === "running");
   }
 }
 
+const tickSound = countdownTicker();
 function renderTimer() {
   if (S) {
     const left = timeLeftMs(S, net.serverNow());
+    tickSound(S, left);
     const num = $("timerNum");
     num.textContent = ["done", "result", "setup"].includes(S.status) ? "-" : (left / 1000).toFixed(1);
     num.classList.toggle("low", S.status === "running" && left < 5000);
@@ -688,6 +695,7 @@ function renderTimer() {
 }
 requestAnimationFrame(renderTimer);
 
+mountSoundToggle($("btnSound"));
 boot();
 </script>
 </body>

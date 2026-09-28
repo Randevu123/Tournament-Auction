@@ -90,6 +90,7 @@
   <div class="my-team"><span id="myName">-</span></div>
   <span class="badge">팀장</span>
   <div class="spacer"></div>
+  <button class="btn" id="btnSound" style="padding:4px 10px;font-size:12px">소리 켜짐</button>
   <span class="conn" id="conn">연결 중…</span>
 </header>
 
@@ -179,6 +180,7 @@ function setConn(status) {
 function onState(s) {
   const prev = S;
   S = s;
+  soundForState(prev, s, { myTeam: ME });
   if (lastSeq === null) lastSeq = s.last_result ? s.last_result.seq : 0;
   else if (s.last_result && s.last_result.seq > lastSeq) { lastSeq = s.last_result.seq; flashResult(s); }
   setScoreConfig(s.config);
@@ -215,7 +217,7 @@ function render(prev) {
       : lead.idx === ME ? `<span class="mine-lead">우리 팀이 최고가!</span>` : `<span style="color:${esc(lead.color)}">${esc(lead.name)} 최고가</span>`;
     $("lot").innerHTML = `
       <div class="card-label">NOW ON AUCTION</div>
-      <div class="p-top">${avatar(p, 96)}<div><div class="p-name">${esc(p.name)}</div><span class="p-pos">${esc(p.pos)}</span><div class="p-agents">${agentChips(p, "lg", 24)}</div></div></div>
+      <div class="p-top">${avatar(p, 96)}<div><div class="p-name">${gradeBadge(p, "lg")}${esc(p.name)}</div><span class="p-pos">${esc(p.pos)}</span><div class="p-agents">${agentChips(p, "lg", 24)}</div></div></div>
       ${p.motto ? `<div class="p-motto">“${esc(p.motto)}”</div>` : ""}
       <div class="p-tiers">
         <div><small>최고 티어</small><b>${esc(p.peak)} <em>${tierPoints(p.peak)}점</em></b></div>
@@ -233,9 +235,10 @@ function render(prev) {
 
   // 우리 팀
   const roster = rosterOf(s, ME), { sum, avg } = teamScore(roster), open = c.teamSize - roster.length;
-  const rows = roster.map(r => `<li><span class="who">${avatar(r, 22)}<span>${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
+  const rows = roster.map(r => `<li><span class="who">${avatar(r, 22)}<span>${gradeBadge(r, "sm")}${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
     r.how === "captain" ? `<span class="pr cap">팀장</span>` : r.how === "random" ? `<span class="pr rnd">무작위</span>` : `<span class="pr">${r.price}P</span>`}</li>`);
-  while (rows.length < c.teamSize) rows.push(`<li class="empty">빈자리</li>`);
+  const miss = missingGrades(s, ME);
+  while (rows.length < c.teamSize) rows.push(`<li class="empty">빈자리${miss.length ? ` · ${miss.shift()}티어 필요` : ""}</li>`);
   $("mine").innerHTML = `
     <div class="row"><h3 style="margin:0">우리 팀</h3><span class="team-slots">빈자리 <b>${open} / ${c.teamSize}</b></span></div>
     <div class="team-points" id="myPoints">${me.points}<small>P 남음</small></div>
@@ -253,7 +256,7 @@ function render(prev) {
   // 다음 순서
   const next = s.queue.slice(0, 6).map(id => s.players.find(x => x.id === id)).filter(Boolean);
   $("nextList").innerHTML = s.status === "setup" ? `<li><span class="nm" style="color:var(--muted)">순서 추첨 전</span></li>`
-    : next.length ? next.map((q, i) => `<li><span style="color:var(--muted);width:16px">${i + 1}</span>${avatar(q, 22)}<span class="nm">${esc(q.name)}</span><span>${playerScore(q).toFixed(1)}</span></li>`).join("")
+    : next.length ? next.map((q, i) => `<li><span style="color:var(--muted);width:16px">${i + 1}</span>${avatar(q, 22)}<span class="nm">${gradeBadge(q, "sm")}${esc(q.name)}</span><span>${playerScore(q).toFixed(1)}</span></li>`).join("")
     : `<li><span class="nm" style="color:var(--muted)">남은 선수 없음</span></li>`;
 
   renderBidbar();
@@ -310,9 +313,11 @@ function sendDirect() { const v = Number($("directInput").value); if (!v) return
 $("directBtn").addEventListener("click", sendDirect);
 $("directInput").addEventListener("keydown", e => { if (e.key === "Enter") sendDirect(); });
 
+const tickSound = countdownTicker();
 function renderTimer() {
   if (S && net) {
     const left = timeLeftMs(S, net.serverNow()), num = $("timerNum");
+    tickSound(S, left);
     if (num) {
       num.textContent = ["done", "result", "setup"].includes(S.status) ? "-" : (left / 1000).toFixed(1);
       num.classList.toggle("low", S.status === "running" && left < 5000);
@@ -323,6 +328,7 @@ function renderTimer() {
 }
 requestAnimationFrame(renderTimer);
 
+mountSoundToggle($("btnSound"));
 boot();
 </script>
 </body>
