@@ -67,7 +67,7 @@
     <button class="btn" id="btnPause">일시정지</button>
     <button class="btn gold" id="btnHammer">지금 마감</button>
     <button class="btn" id="btnNext">다음 선수</button>
-    <button class="btn" id="btnUndo" title="방금 낙찰·유찰·배정을 취소하고 그 선수를 다시 경매해요">방금 결과 취소</button>
+    <button class="btn" id="btnUndo" title="가장 최근 결과부터 하나씩 취소하고 그 선수를 다시 경매해요 (최근 30개)">결과 되돌리기</button>
     <label class="chk"><input type="checkbox" id="autoNext"> 다음 선수 자동 시작</label>
     <button class="btn" id="btnReset">처음부터 다시</button>
     <button class="btn" id="btnSound">소리 켜짐</button>
@@ -348,8 +348,8 @@ $("btnXlsx").addEventListener("click", () => {
 });
 $("btnPause").addEventListener("click", () => host("pause"));
 $("btnUndo").addEventListener("click", () => {
-  const r = S && S.last_result, p = r && S.players.find(x => x.id === r.player);
-  if (confirm(`${p ? p.name : "방금 선수"}의 결과를 취소하고 다시 경매할까요? (포인트도 돌려놔요)`)) host("undo");
+  const p = S && S.players.find(x => x.id === S.undo_player);
+  if (confirm(`${p ? p.name : "가장 최근 선수"}의 결과를 취소하고 다시 경매할까요? (포인트·유찰 횟수도 돌려놔요)\n\n한 번 더 누르면 그 전 결과도 차례로 되돌릴 수 있어요.`)) host("undo");
 });
 $("btnPng").addEventListener("click", async () => {
   $("btnPng").disabled = true;
@@ -694,6 +694,7 @@ function render(prev) {
   $("btnHammer").disabled = !(s.status === "running" || s.status === "paused");
   $("btnNext").disabled = s.status !== "result";
   $("btnUndo").disabled = !s.can_undo;
+  $("btnUndo").textContent = s.undo_count ? `결과 되돌리기 (${s.undo_count})` : "결과 되돌리기";
   $("autoNext").checked = s.auto_start;
   const filled = s.players.filter(x => x.team !== null).length;
   $("progress").textContent = `자리 ${filled} / ${s.teams.length * c.teamSize}`;

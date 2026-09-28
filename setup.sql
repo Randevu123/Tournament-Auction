@@ -144,7 +144,8 @@ alter table public.players add column if not exists agents text[] not null defau
 alter table public.signups add column if not exists grade text check (grade in ('A', 'B', 'C', 'D'));
 alter table public.signups add column if not exists bench boolean not null default false;
 alter table public.players add column if not exists grade text check (grade in ('A', 'B', 'C', 'D'));
-alter table public.auctions add column if not exists undo jsonb;                         -- 마지막 결과 되돌리기용 (직전 상태)
+alter table public.auctions add column if not exists undo jsonb;                         -- 결과 되돌리기용: 결과마다 그 직전 상태 (최근 30개, 쌓임)
+update public.auctions set undo = jsonb_build_array(undo) where jsonb_typeof(undo) = 'object';   -- 예전(하나만) 형식을 목록으로
 alter table public.signups add column if not exists motto text not null default '';       -- 신청할 때 적는 각오 한마디             -- 시작 포인트에서 깎는 핸디캡
 alter table public.signups add column if not exists memo       text not null default '';        -- 운영자끼리만 보는 메모
 alter table public.signups add column if not exists updated_at timestamptz;
@@ -276,7 +277,9 @@ language sql stable security definer set search_path = public as $$
                   'dc_avatar', (select s.discord_avatar from signups s where s.id = p.signup_id)) order by p.id), '[]')
                 from players p where p.auction_id = a.id),
     'title', a.title, 'locked', _locked(a),
-    'can_undo', (a.undo is not null and a.last_result is not null and (a.undo ->> 'seq') = (a.last_result ->> 'seq')
+    'undo_count', case when jsonb_typeof(a.undo) = 'array' then jsonb_array_length(a.undo) else 0 end,
+    'undo_player', case when jsonb_typeof(a.undo) = 'array' then (a.undo -> -1 ->> 'player')::int end,
+    'can_undo', (jsonb_typeof(a.undo) = 'array' and jsonb_array_length(a.undo) > 0 and a.status <> 'setup'
                  and not (a.status in ('running', 'paused') and a.bid_team is not null)),
     'events', (select coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'kind', e.kind, 'body', e.body) order by e.id desc), '[]')
                from (select * from events where auction_id = a.id order by id desc limit 40) e)
@@ -337,6 +340,16 @@ begin
   return null;
 end $$;
 
+-- 되돌리기 목록에 직전 상태 하나 쌓기 (최근 30개만)
+create or replace function public._push_undo(p_id uuid, p_snap jsonb) returns void
+language sql security definer set search_path = public as $$
+  update auctions set undo = (
+    select coalesce(jsonb_agg(e order by o), '[]') from (
+      select e, o from jsonb_array_elements(coalesce(case when jsonb_typeof(undo) = 'array' then undo end, '[]') || jsonb_build_array(p_snap))
+             with ordinality x(e, o) order by o desc limit 30) y)
+  where id = p_id
+$$;
+
 -- 한 선수의 경매를 마무리 (낙찰 / 유찰 / 무작위 배정)
 create or replace function public._finish(p_id uuid) returns void
 language plpgsql security definer set search_path = public as $$
@@ -346,8 +359,8 @@ begin
   select * into a from auctions where id = p_id;
   select * into p from players where auction_id = p_id and id = a.current_player;
   -- 되돌리기용: 이 선수를 다시 경매할 수 있게 직전 상태를 적어 둠
-  update auctions set undo = jsonb_build_object('player', p.id, 'unsold', p.unsold, 'queue', to_jsonb(a.queue), 'seq', a.version + 1,
-         'points', (select jsonb_object_agg(idx::text, points) from teams where auction_id = p_id)) where id = p_id;
+  perform _push_undo(p_id, jsonb_build_object('player', p.id, 'unsold', p.unsold, 'queue', to_jsonb(a.queue),
+         'points', (select jsonb_object_agg(idx::text, points) from teams where auction_id = p_id)));
   if a.bid_team is not null then
     select * into t from teams where auction_id = p_id and idx = a.bid_team;
     update teams set points = points - a.bid_amount where auction_id = p_id and idx = a.bid_team;
@@ -403,8 +416,8 @@ begin
      where tm.auction_id = p_id and _open_slots(p_id, tm.idx) > 0
        and not exists (select 1 from players q where q.auction_id = p_id and q.team_idx = tm.idx and q.grade = p.grade);
     if v_cnt = 1 then
-      update auctions set undo = jsonb_build_object('player', p.id, 'unsold', p.unsold, 'queue', to_jsonb(a.queue[2:]), 'seq', a.version + 1,
-             'points', (select jsonb_object_agg(idx::text, points) from teams where auction_id = p_id)) where id = p_id;
+      perform _push_undo(p_id, jsonb_build_object('player', p.id, 'unsold', p.unsold, 'queue', to_jsonb(a.queue[2:]),
+             'points', (select jsonb_object_agg(idx::text, points) from teams where auction_id = p_id)));
       update players set team_idx = v_team, price = 0, how = 'auto' where auction_id = p_id and id = p.id;
       update auctions set current_player = p.id, queue = a.queue[2:], bid_amount = 0, bid_team = null, ends_at = null, paused_left_ms = null,
              status = 'result', next_at = clock_timestamp() + make_interval(secs => _cfg_int(a, 'resultShowMs') / 1000.0),
@@ -781,24 +794,25 @@ begin
       perform _log(p_id, '', format('%s 점수·티어를 고쳤습니다.', r.name));
     end if;
 
-  -- 방금 결과 되돌리기: 그 선수를 다시 경매에 올림 (다음 선수에게 입찰이 들어오기 전까지만)
+  -- 결과 되돌리기: 가장 최근 결과부터 하나씩, 그 선수를 다시 경매에 올림 (지금 선수에게 입찰이 들어오기 전까지만)
   elsif p_action = 'undo' then
-    if a.undo is null or a.last_result is null or (a.undo ->> 'seq') is distinct from (a.last_result ->> 'seq') then
+    if jsonb_typeof(a.undo) is distinct from 'array' or jsonb_array_length(a.undo) = 0 then
       v_reason := '되돌릴 결과가 없어요.';
     elsif a.status in ('running', 'paused') and a.bid_team is not null then
-      v_reason := '다음 선수에게 이미 입찰이 들어와서 되돌릴 수 없어요.';
+      v_reason := '지금 선수에게 입찰이 들어와서 되돌릴 수 없어요. (마감한 뒤에 되돌릴 수 있어요)';
     elsif a.status not in ('result', 'ready', 'running', 'paused', 'done') then
       v_reason := '지금은 되돌릴 수 없어요.';
     else
-      select * into r from players where auction_id = p_id and id = (a.undo ->> 'player')::int;
-      update players set team_idx = null, price = null, how = null, unsold = (a.undo ->> 'unsold')::int
+      v_cfg := a.undo -> -1;   -- 가장 최근 결과의 직전 상태
+      select * into r from players where auction_id = p_id and id = (v_cfg ->> 'player')::int;
+      update players set team_idx = null, price = null, how = null, unsold = (v_cfg ->> 'unsold')::int
        where auction_id = p_id and id = r.id;
-      update teams t set points = (a.undo -> 'points' ->> t.idx::text)::int where t.auction_id = p_id and a.undo -> 'points' ? t.idx::text;
-      update auctions set queue = array(select x::int from jsonb_array_elements_text(a.undo -> 'queue') x),
+      update teams t set points = (v_cfg -> 'points' ->> t.idx::text)::int where t.auction_id = p_id and v_cfg -> 'points' ? t.idx::text;
+      update auctions set queue = array(select x::int from jsonb_array_elements_text(v_cfg -> 'queue') x),
              current_player = r.id, status = 'ready', bid_amount = 0, bid_team = null, ends_at = null, next_at = null,
-             paused_left_ms = null, last_result = null, undo = null
+             paused_left_ms = null, last_result = null, undo = a.undo - (jsonb_array_length(a.undo) - 1)
        where id = p_id;
-      perform _log(p_id, '', format('되돌리기 — %s 결과를 취소하고 다시 경매합니다.', r.name));
+      perform _log(p_id, '', format('되돌리기 — %s 결과를 취소하고 다시 경매합니다. (더 되돌릴 수 있는 결과 %s개)', r.name, jsonb_array_length(a.undo) - 1));
     end if;
 
   elsif p_action = 'reset' then
@@ -825,7 +839,7 @@ end $$;
 -- =====================================================================
 revoke execute on function public._cfg_int(public.auctions, text), public._auth(uuid, text), public._log(uuid, text, text),
   public._open_slots(uuid, int), public._state(uuid), public._load_players(uuid, jsonb), public._check_players(jsonb, jsonb),
-  public._finish(uuid), public._next(uuid), public._bump(uuid)
+  public._finish(uuid), public._next(uuid), public._bump(uuid), public._push_undo(uuid, jsonb)
   from public, anon, authenticated;
 
 revoke execute on function public.create_auction(jsonb, jsonb), public.whoami(uuid, text), public.get_links(uuid, text),

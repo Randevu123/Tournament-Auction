@@ -32,7 +32,7 @@
     <button class="btn" id="btnPause">일시정지</button>
     <button class="btn gold" id="btnHammer">지금 마감</button>
     <button class="btn" id="btnNext">다음 선수</button>
-    <button class="btn" id="btnUndo">방금 결과 취소</button>
+    <button class="btn" id="btnUndo">결과 되돌리기</button>
     <label class="chk"><input type="checkbox" id="autoNext"> 다음 선수 자동 시작</label>
     <button class="btn" id="btnReset">처음부터 다시</button>
     <button class="btn" id="btnSound">소리 켜짐</button>
@@ -231,17 +231,20 @@ const pById = id => P.players.find(p => p.id === id);
 const cur = () => pById(P.current);
 
 // 되돌리기용 직전 상태 (온라인 서버와 같은 방식)
-function snapshot(pid, queue) { P.undo = { player: pid, unsold: pById(pid).unsold, queue: [...queue], points: P.teams.map(t => t.points), seq: lastSeq + 1 }; }
-function canUndo() { return !!(P.undo && P.last_result && P.undo.seq === P.last_result.seq && !(["running", "paused"].includes(P.status) && P.bid_team !== null)); }
+// 결과마다 직전 상태를 쌓아 두고(최근 30개) 가장 최근 것부터 되돌림
+function snapshot(pid, queue) {
+  P.undo = (P.undo || []).concat([{ player: pid, unsold: pById(pid).unsold, queue: [...queue], points: P.teams.map(t => t.points) }]).slice(-30);
+}
+function canUndo() { return !!(P.undo && P.undo.length && P.status !== "setup" && !(["running", "paused"].includes(P.status) && P.bid_team !== null)); }
 function undoLast() {
-  if (!canUndo()) return toast("되돌릴 결과가 없어요.");
-  const u = P.undo, p = pById(u.player);
+  if (!canUndo()) return toast(P.undo && P.undo.length ? "지금 선수에게 입찰이 들어와서 되돌릴 수 없어요. (마감한 뒤에 되돌릴 수 있어요)" : "되돌릴 결과가 없어요.");
+  const u = P.undo[P.undo.length - 1], p = pById(u.player);
   if (!confirm(`${p.name}의 결과를 취소하고 다시 경매할까요?`)) return;
   p.team = null; p.price = null; p.how = null; p.unsold = u.unsold;
   P.teams.forEach((t, i) => { t.points = u.points[i]; });
   P.queue = [...u.queue]; P.current = p.id; P.status = "ready"; P.bid_amount = 0; P.bid_team = null;
-  P.ends_at = null; P.next_at = null; P.paused_left_ms = null; P.last_result = null; P.undo = null;
-  log(`되돌리기 — ${p.name} 결과를 취소하고 다시 경매합니다.`); render();
+  P.ends_at = null; P.next_at = null; P.paused_left_ms = null; P.last_result = null; P.undo.pop();
+  log(`되돌리기 — ${p.name} 결과를 취소하고 다시 경매합니다. (더 되돌릴 수 있는 결과 ${P.undo.length}개)`); render();
 }
 function nextPlayer() {
   const anyOpen = P.teams.some(t => openOf(t.idx) > 0);
@@ -632,6 +635,7 @@ function render() {
   $("btnHammer").disabled = !(s.status === "running" || s.status === "paused");
   $("btnNext").disabled = s.status !== "result";
   $("btnUndo").disabled = !canUndo();
+  $("btnUndo").textContent = P.undo && P.undo.length ? `결과 되돌리기 (${P.undo.length})` : "결과 되돌리기";
   $("progress").textContent = `자리 ${s.players.filter(x => x.team !== null).length} / ${s.teams.length * c.teamSize}`;
   const queue = s.queue.map(pById);
   $("queue").innerHTML = queue.length
