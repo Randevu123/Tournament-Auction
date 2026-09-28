@@ -522,8 +522,8 @@ end $$;
 create or replace function public.get_chat(p_id uuid, p_key text, p_after bigint default 0) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
 begin
-  -- 채팅은 진행자와 팀장끼리만 (방송 화면 열쇠로는 못 읽음)
-  if (select role from _auth(p_id, p_key)) is distinct from 'host' and (select role from _auth(p_id, p_key)) is distinct from 'team' then return null; end if;
+  -- 채팅은 진행자와 팀장이 쓰고, 방송 화면은 읽기만 함 (보내기는 send_chat이 진행자·팀장만 허용)
+  if (select role from _auth(p_id, p_key)) is null or (select role from _auth(p_id, p_key)) not in ('host', 'team', 'screen') then return null; end if;
   return (select coalesce(jsonb_agg(jsonb_build_object('id', c.id, 'sender', c.sender, 'color', c.color, 'body', c.body,
             'at', (extract(epoch from c.created_at) * 1000)::bigint) order by c.id), '[]')
           from (select * from chat where auction_id = p_id and id > coalesce(p_after, 0) order by id desc limit 100) c);

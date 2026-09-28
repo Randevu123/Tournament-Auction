@@ -554,7 +554,7 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresen
     onChat(fresh.sort((a, b) => a.id - b.id));
   }
   async function refreshChat() {
-    if (!chat) return;                         // 방송 화면은 채팅을 읽지 않음
+    if (!chat) return;                         // chat: false면 채팅을 읽지 않음
     try { addChat(await rpc("get_chat", { p_id: id, p_key: key, p_after: Math.max(0, maxChat - 30) })); } catch (e) { /* 다음에 */ }
   }
   async function sendChat(body) {
@@ -620,8 +620,8 @@ function mountChat(root, net, { storeKey, startCollapsed = false } = {}) {
   root.innerHTML = `
     <button class="chat-head" type="button"><span>채팅</span><b class="unread" hidden>0</b><span class="grow"></span><span class="chev"></span></button>
     <div class="chat-body">
-      <ul class="chat-list"><li class="empty">진행자와 팀장만 보는 채팅이에요.</li></ul>
-      <form class="chat-form"><input maxlength="200" placeholder="메시지 입력" enterkeyhint="send"><button>보내기</button></form>
+      <ul class="chat-list"><li class="empty">진행자와 팀장이 쓰는 채팅이에요. 방송 화면에도 나와요.</li></ul>
+      <form class="chat-form"><input maxlength="200" placeholder="메시지 입력 (방송 화면에 나와요)" enterkeyhint="send"><button>보내기</button></form>
     </div>`;
   const head = root.querySelector(".chat-head"), list = root.querySelector(".chat-list");
   const unreadEl = root.querySelector(".unread"), chev = root.querySelector(".chev");
