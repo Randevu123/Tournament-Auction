@@ -170,7 +170,7 @@
       <h2>선수 관리</h2>
       <span class="cap-count" id="capCount"></span>
       <div class="spacer"></div>
-      <button class="btn" id="btnEdSplit">경매 티어 자동 나누기 (5명 단위)</button>
+      <button class="btn" id="btnEdSplit">5명 단위로 맞추기 (늦게 추가한 선수 대기)</button>
       <button class="btn" id="btnEdAdd">선수 추가</button>
       <button class="btn" id="btnEdDefault">기본값으로 되돌리기</button>
       <button class="btn" id="btnEdCancel">닫기</button>
@@ -537,13 +537,13 @@ function resizePhoto(file) {
     img.src = url;
   });
 }
-// 5명 단위로 맞추고(늦게 추가한 선수부터 대기) 점수 순으로 A~D 나누기. 팀 수 = 전체 ÷ 5 (팀장이 그 수만큼 있어야 함)
+// 5명 단위로 맞추기(늦게 추가한 선수부터 대기). 팀 수 = 전체 ÷ 5 (팀장이 그 수만큼 있어야 함). 경매 티어(A~D)는 직접 고름
 $("btnEdSplit").onclick = () => {
   const sp = splitGrades(draft.map((p, i) => ({ id: i, captain: !!p.captain, order: i, score: playerScore(p) })), 5);
   const caps = draft.filter(p => p.captain).length;
-  draft.forEach((p, i) => { p.grade = p.captain ? null : sp.grades[i]; p.bench = sp.bench.includes(i); });
+  draft.forEach((p, i) => { if (p.captain) p.grade = null; p.bench = sp.bench.includes(i); });
   buildEditor();
-  toast(caps === sp.teams ? `${draft.length}명 → ${sp.teams}팀, 대기 ${sp.bench.length}명. 점수 순으로 A~D를 나눴어요.`
+  toast(caps === sp.teams ? `${draft.length}명 → ${sp.teams}팀, 대기 ${sp.bench.length}명. 경매 티어(A~D)는 선수마다 직접 골라 주세요.`
     : `${draft.length}명이면 ${sp.teams}팀이에요. 팀장을 ${sp.teams}명으로 맞춰 주세요. (지금 ${caps}명)`);
 };
 $("btnEdAdd").onclick = () => { draft.push({ name: `새 선수 ${draft.length + 1}`, peak: "골드 1", current: "골드 1", pos: "타격대", captain: false, motto: "", photo: "", score: null }); buildEditor(); $("edGrid").lastElementChild.scrollIntoView(); };
@@ -558,7 +558,7 @@ $("btnEdSave").onclick = () => {
   if (caps < 1 || caps > 8) return toast("팀장은 1명에서 8명 사이로 정해 주세요.");
   const cnt = GRADES.map(g => draft.filter(p => !p.captain && !p.bench && p.grade === g).length);
   if (cnt.some(Boolean)) {
-    if (draft.some(p => !p.captain && !p.bench && !p.grade)) return toast("경매 티어가 없는 선수가 있어요. ‘경매 티어 자동 나누기’를 눌러 보세요.");
+    if (draft.some(p => !p.captain && !p.bench && !p.grade)) return toast("경매 티어가 없는 선수가 있어요. 선수마다 경매 티어를 골라 주세요.");
     if (cnt.some(x => x !== caps)) return toast(`경매 티어는 팀 수(${caps})만큼씩 있어야 해요. 지금 ${GRADES.map((g, i) => `${g} ${cnt[i]}`).join(" / ")}`);
   }
   if (draft.some(p => p.score != null && !(p.score >= 0 && p.score <= 1000))) return toast("점수는 0에서 1000 사이로 적어 주세요.");

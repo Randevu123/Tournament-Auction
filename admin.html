@@ -594,7 +594,7 @@ function renderPrep() {
   const teamsBy5 = Math.floor(sigs.length / 5), benchBy5 = sigs.length - teamsBy5 * 5;
   const playing = sigs.filter(x => !d.caps.includes(x.id) && !d.excluded.has(x.id));
   const gCnt = GRADES.map(g => playing.filter(x => d.grades[x.id] === g).length);
-  const graded = gCnt.some(Boolean);
+  const graded = gCnt.some(Boolean), noGrade = playing.filter(x => !GRADES.includes(d.grades[x.id])).length;
   const members = window.members.filter(m => m.role !== "pending");
   const S = d.settings;
   // 명단 거르기·정렬 (화면에만 적용, 팀장 순서·티어 나누기에는 영향 없음)
@@ -640,9 +640,11 @@ function renderPrep() {
       <h3><span class="n">1</span>명단 · 팀장 · 핸디캡 → 경매 선수 채우기</h3>
       ${setup ? "" : `<div class="warn-note">경매가 시작돼서 명단을 다시 채울 수 없어요. (진행자 화면의 ‘처음부터 다시’로 준비 단계로 돌아갈 수 있어요)</div>`}
       <div class="prep-bar">신청 <b>${sigs.length}</b>명 → 5명 단위 <b>${teamsBy5}</b>팀 (${teamsBy5 * 5}명 참가${benchBy5 ? `, 늦게 신청한 ${benchBy5}명은 대기` : ""})
-        <button class="btn" id="btnSplit" ${dis || !sigs.length ? "disabled" : ""} style="margin-left:8px">5명 단위로 맞추고 경매 티어 A~D 나누기</button></div>
-      <div class="prep-bar">경매 티어 ${GRADES.map((g, i) => `${gradeBadge({ grade: g }, "sm")}<b>${gCnt[i]}</b>`).join(" ")}
-        ${graded && gCnt.some(x => x !== d.caps.length) ? `<span class="warn"> — 티어마다 팀 수(${d.caps.length})만큼 있어야 해요</span>` : graded ? `<span style="color:var(--ok)"> — 팀마다 A·B·C·D 한 명씩</span>` : `<span style="color:var(--muted)"> — 아직 안 나눴어요 (안 나누면 티어 없이 경매)</span>`}</div>
+        <button class="btn" id="btnSplit" ${dis || !sigs.length ? "disabled" : ""} style="margin-left:8px">5명 단위로 맞추기 (늦게 신청한 사람 대기)</button></div>
+      <div class="prep-bar">경매 티어 ${GRADES.map((g, i) => `${gradeBadge({ grade: g }, "sm")}<b>${gCnt[i]}</b>`).join(" ")}${graded && noGrade ? ` · 없음 <b>${noGrade}</b>` : ""}
+        ${graded && (noGrade || gCnt.some(x => x !== d.caps.length)) ? `<span class="warn"> — 경매 선수 모두에게 티어를 주고, 티어마다 팀 수(${d.caps.length})만큼 있어야 해요</span>` : graded ? `<span style="color:var(--ok)"> — 팀마다 A·B·C·D 한 명씩</span>` : `<span style="color:var(--muted)"> — 아직 안 정했어요 (안 정하면 티어 없이 경매)</span>`}
+        <button class="btn" id="btnGradeClear" ${dis || !graded ? "disabled" : ""} style="margin-left:8px">경매 티어 모두 비우기</button>
+        <div style="color:var(--muted);font-size:12px;margin-top:4px">경매 티어(A~D)는 진행자가 아래 표의 ‘경매 티어’ 칸에서 직접 골라요. 정렬을 ‘점수’로 바꾸면 고르기 편해요.</div></div>
       <div class="prep-bar">팀장 <b>${d.caps.length}</b>명 → 팀 <b>${d.caps.length}</b>개 · 경매 선수 <b>${nPlayers}</b>명 · 팀원 자리 ${slots}칸
         ${d.caps.length && nPlayers !== slots ? `<span class="warn"> — 선수가 자리보다 ${Math.abs(nPlayers - slots)}명 ${nPlayers < slots ? "적어요 (빈자리가 남아도 경매는 할 수 있어요)" : "많아요 (남는 선수는 팀에 못 들어가요)"}</span>` : ""}</div>
       <div class="toolbar prep-tools">
@@ -738,13 +740,15 @@ function renderPrep() {
       return;
     }
     if (t.id === "btnSplit") {
+      // 대기만 정함. 경매 티어(A~D)는 진행자가 표에서 직접 고름
       const sp = splitGrades(sigs.map(x => ({ id: x.id, captain: d.caps.includes(x.id), order: x.id, score: playerScore(x) })), 5);
-      d.excluded = new Set(sp.bench); sigs.forEach(x => { d.grades[x.id] = d.caps.includes(x.id) ? "" : sp.grades[x.id] || ""; });
+      d.excluded = new Set(sp.bench); d.caps.forEach(id => { d.grades[id] = ""; });
       if (S.teamSize !== 5) S.teamSize = 5;
-      toast(d.caps.length === sp.teams ? `${sp.teams}팀으로 맞추고 점수 순으로 A~D를 나눴어요. 대기 ${sp.bench.length}명도 티어를 붙였어요.`
+      toast(d.caps.length === sp.teams ? `${sp.teams}팀으로 맞추고 늦게 신청한 ${sp.bench.length}명을 대기로 뺐어요. 경매 티어(A~D)는 표에서 골라 주세요.`
         : `${sigs.length}명이면 ${sp.teams}팀이에요. 팀장(★)을 ${sp.teams}명으로 맞춘 뒤 다시 눌러 주세요. (지금 ${d.caps.length}명)`);
       return renderPrep();
     }
+    if (t.id === "btnGradeClear") { if (!confirm("모든 사람의 경매 티어(A~D)를 비울까요? (경매 선수 채우기를 눌러야 저장돼요)")) return; sigs.forEach(x => { d.grades[x.id] = ""; }); return renderPrep(); }
     if (t.id === "btnTierDef") { S.tierScores = { ...TIER_SCORE }; return renderPrep(); }
     if (t.id === "btnSetSave") return saveSettings();
     if (t.id === "btnCopyAll") {
