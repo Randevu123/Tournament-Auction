@@ -10,25 +10,49 @@
 </head>
 <body>
 
-<!-- 경매가 아직 없을 때 보이는 첫 화면 -->
-<div class="landing" id="landing" hidden>
-  <div class="panel">
-    <h2>온라인 경매 만들기</h2>
-    <p id="landingMsg">새 경매를 만들면 진행자 링크 1개와 팀장 전용 링크가 팀 수만큼 생깁니다.</p>
-    <div class="row" style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn primary big" id="btnCreate">새 온라인 경매 만들기</button>
-      <a class="btn big" href="admin.html" style="text-decoration:none">운영자 콘솔</a>
-      <a class="btn big" href="practice.html" style="text-decoration:none">혼자 연습하기 (1단계 연습판)</a>
+<!-- 홈 화면 (링크 없이 들어왔을 때) -->
+<div class="home" id="landing" hidden>
+  <section class="home-hero">
+    <div class="kicker">VALORANT 내전</div>
+    <h1>선수 <span>경매</span></h1>
+    <p>디스코드로 신청 받고, 팀장들이 폰으로 실시간 입찰해 팀을 꾸려요.</p>
+    <div class="home-steps"><span><b>1</b>신청</span><i></i><span><b>2</b>경매 준비</span><i></i><span><b>3</b>실시간 경매</span><i></i><span><b>4</b>결과 엑셀</span></div>
+  </section>
+  <div class="home-msg" id="landingMsg" hidden></div>
+  <section class="home-cards">
+    <a class="home-card lead" href="admin.html">
+      <small>운영자</small><b>운영자 콘솔</b>
+      <span>회차 만들기 · 신청 관리 · 티어 나누기 · 경매 준비 · 링크 · 결과</span>
+      <em>들어가기</em>
+    </a>
+    <a class="home-card" href="practice.html">
+      <small>혼자 해 보기</small><b>연습판</b>
+      <span>서버 없이 한 화면에서 같은 규칙으로 경매를 끝까지 돌려 봐요</span>
+      <em>연습하기</em>
+    </a>
+    <div class="home-card info">
+      <small>링크로 들어오는 사람</small><b>받은 링크로 들어와요</b>
+      <ul>
+        <li><i class="dot" style="--c:#5865f2"></i><span><b>참가자</b> 디스코드에 올라온 신청 링크</span></li>
+        <li><i class="dot" style="--c:#ff4655"></i><span><b>팀장</b> 진행자에게 받은 팀장 링크</span></li>
+        <li><i class="dot" style="--c:#ffd166"></i><span><b>방송</b> 콘솔 ‘링크’ 탭의 방송 화면 (OBS)</span></li>
+      </ul>
     </div>
-  </div>
-  <div class="panel" id="savedBox" hidden>
-    <h3 style="margin:0 0 10px;color:var(--muted);font-size:13px;letter-spacing:2px">이 브라우저에서 만든 경매</h3>
+  </section>
+  <section class="home-saved" id="savedBox" hidden>
+    <h3>이 브라우저에서 연 경매</h3>
     <ul id="savedList"></ul>
-  </div>
+  </section>
+  <details class="home-legacy"><summary>제작자 등록 전용: 콘솔 없이 경매 바로 만들기</summary>
+    <p>제작자를 등록한 뒤에는 운영자 콘솔에서만 회차를 만들 수 있어요.</p>
+    <button class="btn" id="btnCreate">새 온라인 경매 만들기</button>
+  </details>
+  <p class="riot-notice" id="homeNotice"></p>
 </div>
 
 <div id="app" hidden>
 <header>
+  <a class="home-btn" href="index.html" title="홈으로">홈</a>
   <div class="logo">VALORANT <span>내전 경매</span></div>
   <span class="badge">진행자</span>
   <span class="conn" id="conn">연결 중…</span>
@@ -212,8 +236,8 @@ function pageUrl(file, id, key) {
 async function boot() {
   const { id, key } = linkParams();
   if (!isConfigured()) {
-    $("landing").hidden = false;
-    $("btnCreate").disabled = true;
+    showLanding();
+    $("btnCreate").disabled = true; $("landingMsg").hidden = false;
     $("landingMsg").innerHTML = "아직 Supabase 연결 정보가 없어요. <b>config.js</b>에 두 값을 넣으면 온라인 경매를 만들 수 있습니다. 그 전까지는 혼자 연습판을 쓸 수 있어요.";
     return;
   }
@@ -221,8 +245,8 @@ async function boot() {
   const sb = window.supabase.createClient(AUCTION_CONFIG.supabaseUrl, AUCTION_CONFIG.supabaseKey, { auth: { persistSession: false } });
   const { data: who, error } = await sb.rpc("whoami", { p_id: id, p_key: key });
   if (error || !who || who.role !== "host") {
-    showLanding();
-    $("landingMsg").textContent = error ? "서버에 연결하지 못했어요. 잠시 뒤 새로고침해 주세요." : "진행자 링크가 올바르지 않아요. 링크를 다시 확인하거나 새 경매를 만드세요.";
+    showLanding(); $("landingMsg").hidden = false;
+    $("landingMsg").textContent = error ? "서버에 연결하지 못했어요. 잠시 뒤 새로고침해 주세요." : "진행자 링크가 올바르지 않아요. 운영자 콘솔의 ‘링크’ 탭에서 다시 복사해 주세요.";
     return;
   }
   rememberHost(id, key);
@@ -244,11 +268,21 @@ async function boot() {
 
 function showLanding() {
   $("landing").hidden = false;
+  $("homeNotice").textContent = RIOT_NOTICE;
   const list = savedHosts();
-  if (list.length) {
-    $("savedBox").hidden = false;
-    $("savedList").innerHTML = list.map(x => `<li><a href="${esc(pageUrl("index.html", x.id, x.key))}">${new Date(x.at).toLocaleString("ko-KR")}에 만든 경매 열기</a></li>`).join("");
-  }
+  if (!list.length) return;
+  $("savedBox").hidden = false;
+  const LABEL = { setup: "준비 중", ready: "시작 대기", running: "경매 중", paused: "일시정지", result: "경매 중", done: "끝남" };
+  $("savedList").innerHTML = list.map((x, i) => `<li data-i="${i}"><a href="${esc(pageUrl("index.html", x.id, x.key))}"><b>진행자 화면</b><span>${new Date(x.at).toLocaleDateString("ko-KR")}에 연 경매</span><em>열기</em></a></li>`).join("");
+  if (!isConfigured()) return;
+  // 회차 이름·상태를 서버에서 가져와 채움 (못 가져와도 날짜로 보임)
+  const sb = window.supabase.createClient(AUCTION_CONFIG.supabaseUrl, AUCTION_CONFIG.supabaseKey, { auth: { persistSession: false } });
+  list.forEach((x, i) => sb.rpc("get_state", { p_id: x.id, p_key: x.key }).then(({ data }) => {
+    const li = $("savedList").querySelector(`[data-i="${i}"]`); if (!li) return;
+    if (!data) { li.classList.add("gone"); li.querySelector("span").textContent = "없어진 경매 (지워졌거나 링크가 바뀜)"; return; }
+    li.querySelector("b").textContent = data.title || "제목 없는 경매";
+    li.querySelector("span").textContent = `${LABEL[data.status] || data.status} · 팀 ${data.teams.length}개 · ${new Date(x.at).toLocaleDateString("ko-KR")}`;
+  }).catch(() => {}));
 }
 
 $("btnCreate").addEventListener("click", async () => {

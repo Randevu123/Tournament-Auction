@@ -87,6 +87,7 @@
 
 <div id="app" hidden>
 <header>
+  <a class="home-btn" href="index.html" id="homeBtn" title="홈으로">홈</a>
   <div class="my-team"><span id="myName">-</span></div>
   <span class="badge">팀장</span>
   <div class="spacer"></div>
@@ -329,6 +330,10 @@ function renderTimer() {
 requestAnimationFrame(renderTimer);
 
 mountSoundToggle($("btnSound"));
+// 경매 중에 실수로 나가지 않도록 한 번 물어봄 (나가도 같은 팀장 링크로 다시 들어오면 됨)
+$("homeBtn").addEventListener("click", e => {
+  if (S && ["ready", "running", "paused", "result"].includes(S.status) && !confirm("경매가 진행 중이에요. 홈으로 갈까요? (이 팀장 링크로 다시 들어오면 이어서 할 수 있어요)")) e.preventDefault();
+});
 boot();
 </script>
 </body>
