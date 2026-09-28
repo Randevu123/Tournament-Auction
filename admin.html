@@ -214,7 +214,12 @@
    ===================================================================== */
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
-const NEED_CHECKS = 2;     // 서로 다른 운영자 몇 명이 확인하면 검수 완료인지
+// 검수 완료에 필요한 확인 수: 진행자·제작자·모든 회차 진행 권한자를 뺀 운영자가 3명 이하면 1명, 4명 이상이면 2명
+function checkers() {
+  const host = detail && detail.host && detail.host.user_id;
+  return (window.members || []).filter(m => m.role === "staff" && !m.all_host && m.user_id !== host).length;
+}
+function needChecks() { return checkers() <= 3 ? 1 : 2; }
 let sb, me = null, events = [], detail = null, members = [], selected = null, tab = "people", filter = "all", search = "", myOnly = false, view = "event";
 let channel = null, logs = [], logsFor = null, logSearch = "";   // logsFor: 지금 들고 있는 기록이 어느 것인지 ('site' 또는 회차 id)
 
@@ -427,7 +432,7 @@ let pastOpen = false;
 try { pastOpen = localStorage.getItem("valo-console-past-open") === "1"; } catch (err) { /* 무시 */ }
 
 function checksOf(s, kind) { return s.checks.filter(c => c.kind === kind); }
-function isDone(s, kind) { return checksOf(s, kind).length >= NEED_CHECKS; }
+function isDone(s, kind) { return checksOf(s, kind).length >= needChecks(); }
 
 function renderEvent() {
   const e = detail.event, S = detail.signups, T = detail.tasks;
@@ -477,7 +482,7 @@ function renderPeople() {
   });
   const checkCell = (s, kind) => {
     const cs = checksOf(s, kind), mine = cs.some(c => c.user_id === me.user_id), n = cs.length;
-    const state = n >= NEED_CHECKS ? `<span class="chip done">완료 ${n}/${NEED_CHECKS}</span>` : n ? `<span class="chip part">${n}/${NEED_CHECKS}</span>` : `<span class="chip">0/${NEED_CHECKS}</span>`;
+    const state = n >= needChecks() ? `<span class="chip done">완료 ${n}/${needChecks()}</span>` : n ? `<span class="chip part">${n}/${needChecks()}</span>` : `<span class="chip">0/${needChecks()}</span>`;
     return `<div class="chk">${state}<div class="names">${cs.map(c => esc(c.name)).join(", ") || "아직 없음"}</div>
       <button class="${mine ? "mine" : ""}" data-check="${kind}" data-id="${s.id}" data-on="${mine ? 0 : 1}" ${RO ? "disabled" : ""}>${mine ? "내 확인 취소" : "확인"}</button></div>`;
   };
@@ -488,7 +493,7 @@ function renderPeople() {
         ${[["all", "전체"], ["todo", "검수 덜 된 사람"], ["done", "검수 끝난 사람"], ["captain", "팀장만"]].map(([k, l]) => `<option value="${k}" ${filter === k ? "selected" : ""}>${l}</option>`).join("")}
       </select>
       <button class="btn" id="btnPeopleCsv" type="button">명단 CSV로 내려받기</button>
-      <span style="color:var(--muted);font-size:12px">검수는 서로 다른 운영자 ${NEED_CHECKS}명이 ‘확인’을 눌러야 완료돼요. ★ = 팀장 (팀 수 = 팀장 수, 최대 8명)</span>
+      <span style="color:var(--muted);font-size:12px">검수는 ${needChecks() === 1 ? "운영자 1명" : "서로 다른 운영자 2명"}이 ‘확인’을 누르면 완료돼요 (진행자·제작자를 뺀 운영자가 ${checkers()}명이라 ${needChecks()}명). ★ = 팀장 (팀 수 = 팀장 수, 최대 8명)</span>
     </div>
     <div class="table-wrap"><table class="grid">
       <thead><tr><th>팀장</th><th>#</th><th>디스코드</th><th>게임 닉네임</th><th>최고 티어</th><th>현재 티어</th><th>포지션 · 주 요원</th><th>점수</th><th>티어 검수</th><th>점수 계산 재확인</th><th>메모</th><th></th></tr></thead>
@@ -911,8 +916,8 @@ function downloadPeopleCsv() {
                  "티어 점수(최종)", "자동 점수", "직접 정한 점수", "팀장", "티어 검수", "티어 검수한 사람", "점수 재확인", "점수 재확인한 사람", "메모", "신청 시각"]]
     .concat(detail.signups.map((x, i) => [i + 1, x.nick, x.discord_name, x.discord_username ? "@" + x.discord_username : "", x.peak, x.current, x.pos, agentsOf(x).join(", "), x.grade || "", x.bench ? "대기" : "",
       playerScore(x).toFixed(1), autoScore(x).toFixed(1), x.score != null ? Number(x.score).toFixed(1) : "", x.captain ? "팀장" : "",
-      `${checksOf(x, "tier").length}/${NEED_CHECKS}${isDone(x, "tier") ? " 완료" : ""}`, names(x, "tier"),
-      `${checksOf(x, "score").length}/${NEED_CHECKS}${isDone(x, "score") ? " 완료" : ""}`, names(x, "score"), x.memo || "", csvStamp(x.at)]));
+      `${checksOf(x, "tier").length}/${needChecks()}${isDone(x, "tier") ? " 완료" : ""}`, names(x, "tier"),
+      `${checksOf(x, "score").length}/${needChecks()}${isDone(x, "score") ? " 완료" : ""}`, names(x, "score"), x.memo || "", csvStamp(x.at)]));
   saveCsv(rows, "signups");
   toast(`신청 ${detail.signups.length}명을 내려받았어요.`);
 }
