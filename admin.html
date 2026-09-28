@@ -456,9 +456,9 @@ function renderEvent() {
       <span class="host-chip">진행자 <b>${esc(detail.host.name || "없음")}</b>${detail.host.user_id === me.user_id ? " (나)" : ""}</span>
     </div>
     ${e.locked ? `<div class="lock-banner">잠김 · 지난 회차라 참가자 고치기와 일정·경매 설정을 바꿀 수 없어요. (할 일·기록·CSV·결과 내려받기는 돼요)
-      ${me.role === "owner" ? `<button class="btn" id="btnUnlock">잠금 풀기</button>` : `<span style="font-weight:400">고쳐야 하면 제작자에게 잠금 풀기를 부탁하세요.</span>`}</div>`
-      : e.unlocked && isPast({ status_label: e.status, match_at: e.match_at }) ? `<div class="lock-banner" style="color:var(--ok);border-color:var(--ok);background:rgba(61,220,151,.06)">지난 회차지만 제작자가 잠금을 풀어 두었어요.
-      ${me.role === "owner" ? `<button class="btn" id="btnRelock">다시 잠그기</button>` : ""}</div>` : ""}
+      ${detail.can_host ? `<button class="btn" id="btnUnlock">잠금 풀기</button>` : `<span style="font-weight:400">고쳐야 하면 이 회차의 진행자나 제작자에게 잠금 풀기를 부탁하세요.</span>`}</div>`
+      : e.unlocked && isPast({ status_label: e.status, match_at: e.match_at }) ? `<div class="lock-banner" style="color:var(--ok);border-color:var(--ok);background:rgba(61,220,151,.06)">지난 회차지만 잠금을 풀어 두었어요. 다 고쳤으면 다시 잠가 주세요.
+      ${detail.can_host ? `<button class="btn" id="btnRelock">다시 잠그기</button>` : ""}</div>` : ""}
     <div class="stats">
       <div class="stat"><small>신청</small><b>${S.length}<em>명</em></b></div>
       <div class="stat"><small>팀장 배정</small><b>${caps}<em>명</em></b></div>

@@ -1505,7 +1505,8 @@ end $$;
 create or replace function public.set_event_unlocked(p_id uuid, p_unlocked boolean) returns jsonb
 language plpgsql security definer set search_path = public as $$
 begin
-  if _my_role() is distinct from 'owner' then return jsonb_build_object('ok', false, 'reason', '잠금은 제작자만 풀 수 있어요.'); end if;
+  -- 그 회차의 진행자, 모든 회차 진행 권한자, 제작자가 풀고 잠글 수 있음
+  if not _can_host(p_id) then return jsonb_build_object('ok', false, 'reason', '잠금은 이 회차의 진행자나 제작자만 풀 수 있어요.'); end if;
   update auctions set unlocked = coalesce(p_unlocked, false) where id = p_id;
   if not found then return jsonb_build_object('ok', false, 'reason', '회차를 찾지 못했어요.'); end if;
   perform _slog(p_id, case when p_unlocked then '지난 회차 잠금 풀기' else '지난 회차 다시 잠그기' end, '');
