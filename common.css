@@ -83,7 +83,10 @@
   .card-label { font-size: 12px; letter-spacing: 3px; color: var(--accent); font-weight: 900; }
   .p-top { display: flex; gap: 18px; align-items: center; margin: 10px 0 12px; }
   .p-top .av { border: 3px solid rgba(255,255,255,.12); box-shadow: 0 10px 30px rgba(0,0,0,.4); }
-  .p-name { font-family: var(--num); font-size: calc(clamp(34px, 4.2vw, 64px) * var(--ns, 1)); line-height: 1.05; word-break: break-all; overflow-wrap: anywhere; min-width: 0; }
+  .p-name { font-family: var(--num); font-size: calc(clamp(34px, 4.2vw, 64px) * var(--ns, 1)); line-height: 1.05; min-width: 0; }
+  .p-top > div { min-width: 0; flex: 1; }
+  /* 한 줄 이름 (넘치면 common.js의 fitOneLine이 글자를 줄임) */
+  [data-fit] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .p-pos { display: inline-block; margin-top: 8px; padding: 4px 12px; border-radius: 999px; background: rgba(255,70,85,.15); color: #ff8c96; font-weight: 700; font-size: 14px; }
   .p-motto { margin: 4px 0 0; padding: 10px 14px; border-left: 3px solid var(--gold); background: rgba(255,209,102,.06); border-radius: 0 10px 10px 0; font-size: 16px; min-height: 20px; }
   .p-motto:empty { display: none; }
@@ -153,7 +156,7 @@
   .roster li { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 13px; padding: 4px 8px; border-radius: 6px; background: var(--panel-2); }
   .roster li .who { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .roster li .who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .roster li.empty { background: transparent; border: 1px dashed var(--line); color: var(--muted); min-height: 30px; gap: 6px; }
+  .roster li.empty { background: transparent; border: 1px dashed var(--line); color: var(--muted); min-height: 30px; gap: 6px; justify-content: center; }
   .roster li.empty .grade, .tm li.empty .grade { opacity: .55; }
   .roster li .pr { color: var(--gold); font-weight: 700; white-space: nowrap; }
   .roster li .rnd { color: var(--warn); }
@@ -190,7 +193,7 @@
   .draw h2 span { color: var(--accent); }
   .roulette { display: grid; justify-items: center; gap: 14px; padding: 28px; border-radius: 20px; background: linear-gradient(160deg, #1a1f30, #10131d); border: 1px solid var(--line); position: sticky; top: 20px; }
   .roulette .pick-no { font-family: var(--num); font-size: 28px; color: var(--accent); }
-  .roulette .r-name { font-family: var(--num); font-size: clamp(34px, 4vw, 56px); text-align: center; word-break: break-all; }
+  .roulette .r-name { font-family: var(--num); font-size: clamp(34px, 4vw, 56px); text-align: center; justify-self: stretch; }
   .roulette.locked .r-name { color: var(--gold); text-shadow: 0 0 24px rgba(255,209,102,.5); animation: bump .35s ease; }
   .roulette .r-sub { color: var(--muted); min-height: 22px; }
   .order-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -350,18 +353,22 @@
 .result-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .result-head h2 { margin: 0; font-family: var(--num); font-weight: 400; font-size: clamp(34px, 5vw, 60px); text-shadow: 0 0 30px rgba(255,209,102,.35); }
 .result-head h2 span { color: var(--gold); }
-.result-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.result-team { background: var(--panel); border: 1px solid var(--line); border-top: 5px solid var(--c); border-radius: 14px; padding: 12px; display: grid; gap: 8px; animation: pop .45s ease both; }
+.result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 12px; }   /* 팀이 적으면 카드가 넓어져 이름이 덜 줄어듦 */
+.result-team { background: var(--panel); border: 1px solid var(--line); border-top: 5px solid var(--c); border-radius: 14px; padding: 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; animation: pop .45s ease both; min-width: 0; }
 .result-team:nth-child(2) { animation-delay: .08s; } .result-team:nth-child(3) { animation-delay: .16s; } .result-team:nth-child(4) { animation-delay: .24s; }
 .result-team:nth-child(5) { animation-delay: .32s; } .result-team:nth-child(6) { animation-delay: .4s; }
 .rt-head { display: flex; justify-content: space-between; align-items: baseline; }
-.rt-head b { font-family: var(--num); font-weight: 400; font-size: 22px; color: var(--c); }
-.rt-head span { color: var(--muted); font-size: 13px; }
-.rt-nums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.rt-head b { font-family: var(--num); font-weight: 400; font-size: 22px; color: var(--c); min-width: 0; flex: 1 1 auto; }
+.rt-head span { color: var(--muted); font-size: 13px; flex: none; white-space: nowrap; }
+.rt-nums { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .rt-nums div { background: rgba(255,255,255,.04); border-radius: 8px; padding: 5px 6px; }
 .rt-nums small { display: block; font-size: 10px; color: var(--muted); }
 .rt-nums b { font-family: var(--num); font-weight: 400; font-size: 17px; color: var(--gold); }
-.rt-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rt-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+/* 칸 너비를 고정해서 긴 이름은 줄바꿈·잘림 대신 글자가 작아짐 (data-fit) */
+.rt-table td:first-child { width: 28px; } .rt-table td:nth-child(3) { width: 58px; } .rt-table td.sc { width: 38px; } .rt-table td.pr { width: 50px; }
+@media (max-width: 600px) { .rt-table td:nth-child(3) { display: none; } }
+.rt-table .rt-nm { display: block; }
 .rt-table td { padding: 4px 4px; border-top: 1px solid var(--line); vertical-align: middle; }
 .rt-table td small { display: block; color: var(--muted); font-size: 11px; }
 .rt-table .sc { color: var(--gold); font-family: var(--num); }
@@ -468,6 +475,8 @@ a.home-card:hover { transform: translateY(-4px); border-color: var(--accent); bo
 /* 팀이 6개 이상이면 팀 이름을 한 줄 통째로 (노트북 화면에서 이름이 잘리지 않게) */
 .teams.many .team-head { flex-wrap: wrap; row-gap: 2px; }
 .teams.many .team-name { flex-basis: 100%; min-width: 0; }
+.roster .psc { color: var(--muted); }
+.teams.many .roster .psc { display: none; }   /* 팀이 많아 카드가 좁으면 선수별 점수를 빼고 이름에 자리를 줌 (합계·평균은 카드 아래에) */
 .teams.many .team-name span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .teams.many .team-points { font-size: 32px; }
 .teams.many .team-max { font-size: 11px; }
@@ -481,7 +490,7 @@ a.home-card:hover { transform: translateY(-4px); border-color: var(--accent); bo
 .roster { grid-template-columns: minmax(0, 1fr); }
 .roster li .who > span:last-child { min-width: 0; }
 .flash-inner { max-width: 92vw; padding: 0 12px; }
-.flash-sub { overflow-wrap: anywhere; word-break: break-all; }
+.flash-sub { justify-self: stretch; text-align: center; }
 
 .home-docs h3 { margin: 0 0 10px; font-size: 13px; letter-spacing: 3px; color: var(--muted); }
 .home-docs > div { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }

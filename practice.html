@@ -71,7 +71,7 @@
       <div class="p-top">
         <div id="pPhoto"></div>
         <div>
-          <div class="p-name"><span id="pGrade"></span><span id="pName">-</span></div>
+          <div class="p-name" data-fit><span id="pGrade"></span><span id="pName">-</span></div>
           <span class="p-pos" id="pPos">-</span>
           <div class="p-agents" id="pAgents"></div>
         </div>
@@ -88,7 +88,7 @@
       <div class="bid-now">
         <small>현재 최고가</small>
         <div class="bid-amount" id="bidAmount">0</div>
-        <div class="bid-leader" id="bidLeader">아직 입찰 없음</div>
+        <div class="bid-leader" id="bidLeader" data-fit>아직 입찰 없음</div>
       </div>
       <div class="timer">
         <small>남은 시간</small>
@@ -154,7 +154,7 @@
     <div class="roulette" id="roulette">
       <div class="pick-no" id="rNo">1번</div>
       <div id="rPhoto"></div>
-      <div class="r-name" id="rName">-</div>
+      <div class="r-name" id="rName" data-fit>-</div>
       <div class="r-sub" id="rSub"></div>
     </div>
     <ol class="order-list" id="orderList"></ol>
@@ -182,7 +182,7 @@
   </div>
 </div>
 
-<div class="flash" id="flash"><div class="flash-inner"><div id="flashPhoto"></div><div class="flash-title" id="flashTitle">SOLD</div><div class="flash-sub" id="flashSub"></div></div></div>
+<div class="flash" id="flash"><div class="flash-inner"><div id="flashPhoto"></div><div class="flash-title" id="flashTitle">SOLD</div><div class="flash-sub" id="flashSub" data-fit></div></div></div>
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -589,7 +589,7 @@ function buildTeams() {
     const el = document.createElement("div");
     el.className = "team"; el.dataset.id = t.idx; el.style.setProperty("--c", t.color);
     el.innerHTML = `
-      <div class="team-head"><div class="team-name"><span>${esc(t.name)}</span></div><div class="team-slots">빈자리 <b data-k="slots"></b></div></div>
+      <div class="team-head"><div class="team-name"><span data-fit>${esc(t.name)}</span></div><div class="team-slots">빈자리 <b data-k="slots"></b></div></div>
       <div class="team-points" data-k="points"></div>
       <div class="team-max" data-k="max"></div>
       <div class="team-score"><div><small>티어 점수 합계</small><b data-k="sum"></b></div><div><small>티어 점수 평균</small><b data-k="avg"></b></div></div>
@@ -680,7 +680,7 @@ function render() {
     el.querySelector('[data-k="max"]').innerHTML = open > 0 ? `최대 입찰 가능 <b>${maxBidOf(t)}P</b>${open > 1 ? ` · 빈자리 몫 ${c.reservePerSlot * (open - 1)}P 보관` : ""}` : "팀 완성";
     el.querySelector('[data-k="sum"]').textContent = sum.toFixed(1);
     el.querySelector('[data-k="avg"]').textContent = avg === null ? "-" : avg.toFixed(1);
-    const rows = tierSlots(s, t.idx).map(({ p: r, grade }) => r ? `<li><span class="who">${avatar(r, 22)}<span>${gradeBadge(r, "sm")}${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
+    const rows = tierSlots(s, t.idx).map(({ p: r, grade }) => r ? `<li><span class="who">${avatar(r, 22)}<span data-fit="9">${gradeBadge(r, "sm")}${esc(r.name)}<span class="psc"> ${playerScore(r).toFixed(1)}</span></span></span>${
       priceTag(r)}</li>` : `<li class="empty">${emptySlotLabel(grade)}</li>`);
     el.querySelector('[data-k="roster"]').innerHTML = rows.join("");
     el.classList.toggle("leading", s.bid_team === t.idx && s.status === "running");

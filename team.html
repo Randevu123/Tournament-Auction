@@ -91,7 +91,7 @@
 <div id="app" hidden>
 <header>
   <a class="home-btn" href="index.html" id="homeBtn" title="홈으로">홈</a>
-  <div class="my-team"><span id="myName">-</span></div>
+  <div class="my-team"><span id="myName" data-fit>-</span></div>
   <span class="badge">팀장</span>
   <div class="spacer"></div>
   <button class="btn" id="btnSound" style="padding:4px 10px;font-size:12px">소리 켜짐</button>
@@ -126,7 +126,7 @@
 </div>
 </div>
 
-<div class="flash" id="flash"><div class="flash-inner"><div id="flashPhoto"></div><div class="flash-title" id="flashTitle">SOLD</div><div class="flash-sub" id="flashSub"></div></div></div>
+<div class="flash" id="flash"><div class="flash-inner"><div id="flashPhoto"></div><div class="flash-title" id="flashTitle">SOLD</div><div class="flash-sub" id="flashSub" data-fit></div></div></div>
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
@@ -222,7 +222,7 @@ function render(prev) {
       : lead.idx === ME ? `<span class="mine-lead">우리 팀이 최고가!</span>` : `<span style="color:${esc(lead.color)}">${esc(lead.name)} 최고가</span>`;
     $("lot").innerHTML = `
       <div class="card-label">NOW ON AUCTION</div>
-      <div class="p-top">${avatar(p, 96)}<div><div class="p-name" style="--ns:${nameScale(p.name)}">${gradeBadge(p, "lg")}${esc(p.name)}</div><span class="p-pos">${esc(p.pos)}</span><div class="p-agents">${agentChips(p, "lg", 24)}</div></div></div>
+      <div class="p-top">${avatar(p, 96)}<div><div class="p-name" data-fit style="--ns:${nameScale(p.name)}">${gradeBadge(p, "lg")}${esc(p.name)}</div><span class="p-pos">${esc(p.pos)}</span><div class="p-agents">${agentChips(p, "lg", 24)}</div></div></div>
       ${p.motto ? `<div class="p-motto">“${esc(p.motto)}”</div>` : ""}
       <div class="p-tiers">
         <div><small>최고 티어</small><b>${esc(p.peak)} <em>${tierPoints(p.peak)}점</em></b></div>
@@ -231,7 +231,7 @@ function render(prev) {
       </div>
       ${p.unsold ? `<div class="p-unsold">이미 ${p.unsold}번 유찰 — 이번에도 유찰되면 빈자리 팀에 무작위 배정</div>` : ""}
       <div class="lot-bid">
-        <div class="bid-now"><small>현재 최고가</small><div class="bid-amount" id="bidAmount">${s.bid_amount}</div><div class="bid-leader">${leadHtml}</div></div>
+        <div class="bid-now"><small>현재 최고가</small><div class="bid-amount" id="bidAmount">${s.bid_amount}</div><div class="bid-leader" data-fit>${leadHtml}</div></div>
         <div class="timer"><small>남은 시간</small><div><span class="timer-num" id="timerNum">-</span><span class="timer-plus" id="timerPlus"></span></div></div>
       </div>
       <div class="bar"><i id="timerBar"></i></div>
@@ -240,7 +240,7 @@ function render(prev) {
 
   // 우리 팀
   const roster = rosterOf(s, ME), { sum, avg } = teamScore(roster), open = c.teamSize - roster.length;
-  const rows = tierSlots(s, ME).map(({ p: r, grade }) => r ? `<li><span class="who">${avatar(r, 22)}<span>${gradeBadge(r, "sm")}${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
+  const rows = tierSlots(s, ME).map(({ p: r, grade }) => r ? `<li><span class="who">${avatar(r, 22)}<span data-fit="9">${gradeBadge(r, "sm")}${esc(r.name)}<span class="psc"> ${playerScore(r).toFixed(1)}</span></span></span>${
     priceTag(r)}</li>` : `<li class="empty">${emptySlotLabel(grade)}</li>`);
   $("mine").innerHTML = `
     <div class="row"><h3 style="margin:0">우리 팀</h3><span class="team-slots">빈자리 <b>${open} / ${c.teamSize}</b></span></div>

@@ -148,6 +148,32 @@ function nameScale(name) {
   const w = [...String(name || "")].reduce((a, ch) => a + (/[\u0000-\u024f]/.test(ch) ? (/[A-Z@MWmw]/.test(ch) ? 0.78 : 0.6) : 1), 0);
   return w <= 7 ? 1 : Math.max(0.42, 7 / w);
 }
+// 이름은 한 줄로: data-fit 이 붙은 칸은 글자가 넘치면 줄바꿈 대신 글자 크기를 줄임 (원래의 35%, 11px까지)
+// 내용·칸 너비가 바뀔 때마다 자동으로 다시 맞춤 (화면마다 따로 부를 필요 없음)
+function fitOneLine(el) {
+  const w = el.clientWidth, key = `${el.textContent}|${w}`;
+  if (el._fitKey === key) return;
+  el._fitKey = key;
+  el.style.fontSize = "";
+  if (!w) { el._fitKey = ""; return; }            // 안 보이는 칸은 보일 때 맞춤
+  const base = parseFloat(getComputedStyle(el).fontSize) || 16;
+  const floor = Number(el.dataset.fit) || 11;                // data-fit="9"처럼 칸마다 가장 작은 글자 크기를 정할 수 있음 (기본 11px)
+  const min = Math.max(base * 0.35, Math.min(base, floor));   // 그보다 작게는 안 줄임 (그래도 넘치면 끝이 …)
+  let size = base;
+  while (el.scrollWidth > el.clientWidth + 1 && size > min) { size = Math.max(min, size * 0.92); el.style.fontSize = `${size}px`; }
+}
+(() => {
+  let queued = false;
+  const run = () => { queued = false; document.querySelectorAll("[data-fit]").forEach(fitOneLine); };
+  const later = () => { if (!queued) { queued = true; requestAnimationFrame(run); } };
+  const start = () => {
+    new MutationObserver(later).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "hidden"] });
+    addEventListener("resize", () => { document.querySelectorAll("[data-fit]").forEach(el => { el._fitKey = ""; }); later(); });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { document.querySelectorAll("[data-fit]").forEach(el => { el._fitKey = ""; }); later(); });
+    later();
+  };
+  if (document.body) start(); else addEventListener("DOMContentLoaded", start);
+})();
 // 사진 파일을 가운데 기준 정사각형으로 잘라 작게 줄임 (신청 화면 등)
 function resizePhotoFile(file, size = CONFIG.photoSize) {
   return new Promise((resolve, reject) => {
@@ -739,11 +765,11 @@ function resultHtml(state, { reveal = false, discord = true } = {}) {
   return `<div class="result-grid ${reveal ? "reveal" : ""}">${teams.map(({ team: t, roster, start, sum, avg }) => `
       <div class="result-team ${rank[t.idx] === 1 && teams.length > 1 ? "top" : ""}" style="--c:${esc(t.color)}" data-rank="${rank[t.idx]}">
         ${rank[t.idx] === 1 && teams.length > 1 ? `<div class="rt-crown">우승 후보</div>` : ""}
-        <div class="rt-head"><b>${esc(t.name)}</b><span class="rt-rank">점수 합계 ${rank[t.idx]}위</span><span>${roster.length}명</span></div>
+        <div class="rt-head"><b data-fit>${esc(t.name)}</b><span class="rt-rank">점수 합계 ${rank[t.idx]}위</span><span>${roster.length}명</span></div>
         <div class="rt-nums"><div><small>남은 포인트</small><b>${t.points}P</b></div><div><small>시작</small><b>${start}P</b></div><div><small>점수 합계</small><b>${sum.toFixed(1)}</b></div><div><small>평균</small><b>${avg === null ? "-" : avg.toFixed(1)}</b></div></div>
         <table class="rt-table"><tbody>${roster.map(p => `<tr class="${p.how === "random" || p.how === "auto" ? "rnd" : ""}">
-          <td>${avatar(p, 22)}</td><td>${gradeBadge(p, "sm")}<b>${esc(p.name)}</b>${discord && p.discord ? `<small>${esc(p.discord)}</small>` : ""}</td>
-          <td>${esc(p.pos)}</td><td class="sc">${playerScore(p).toFixed(1)}</td>
+          <td>${avatar(p, 22)}</td><td><div class="rt-nm" data-fit="9">${gradeBadge(p, "sm")}<b>${esc(p.name)}</b></div>${discord && p.discord ? `<small data-fit>${esc(p.discord)}</small>` : ""}</td>
+          <td data-fit="9">${esc(p.pos)}</td><td class="sc">${playerScore(p).toFixed(1)}</td>
           <td class="pr">${p.how === "captain" ? "팀장" : p.how === "random" ? "무작위" : p.how === "auto" ? "자동" : `${p.price}P`}</td></tr>`).join("")}</tbody></table>
       </div>`).join("")}</div>
     ${left.length ? `<div class="result-left">팀에 못 들어간 선수 ${left.length}명: ${left.map(p => esc(p.name)).join(", ")}</div>` : ""}`;
