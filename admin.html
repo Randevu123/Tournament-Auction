@@ -122,6 +122,10 @@
   .prep-table tr.cap td { background: rgba(255,209,102,.06); }
   .prep-table input[type=number] { width: 90px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; }
   .prep-table .star { min-width: 64px; }
+  .prep-table th.sortable { cursor: pointer; user-select: none; }
+  .prep-table th.sortable:hover, .prep-table th.sortable.on { color: var(--text); }
+  .prep-tools { margin: 4px 0 0; }
+  .prep-tools a { color: var(--accent); }
   .danger { border-color: rgba(255,70,85,.5); }
   .danger h3 { color: #ff8c96; }
   .log-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
@@ -593,6 +597,31 @@ function renderPrep() {
   const graded = gCnt.some(Boolean);
   const members = window.members.filter(m => m.role !== "pending");
   const S = d.settings;
+  // 명단 거르기·정렬 (화면에만 적용, 팀장 순서·티어 나누기에는 영향 없음)
+  if (!d.view) d.view = { q: "", show: "all", sort: "signup", dir: "asc" };
+  const V = d.view, capNo = id => d.caps.indexOf(id) + 1, isInc = x => capNo(x.id) > 0 || !d.excluded.has(x.id);
+  const tierIdx = t => { const i = TIER_OPTIONS.indexOf(t); return i < 0 ? -1 : i; };
+  const gradeIdx = x => capNo(x.id) ? 0 : GRADES.includes(d.grades[x.id]) ? GRADES.indexOf(d.grades[x.id]) + 1 : GRADES.length + 1;
+  const SORT_KEY = { signup: x => sigs.indexOf(x), score: x => playerScore(x), grade: gradeIdx, peak: x => tierIdx(x.peak), current: x => tierIdx(x.current), nick: x => String(x.nick || "") };
+  const q = V.q.trim().toLowerCase();
+  const shown = sigs.filter(x => {
+    if (q && !`${x.nick} ${x.discord_name} ${x.discord_username || ""}`.toLowerCase().includes(q)) return false;
+    const cap = capNo(x.id) > 0, inc = isInc(x);
+    if (V.show === "in") return inc && !cap;
+    if (V.show === "cap") return cap;
+    if (V.show === "bench") return !inc;
+    if (GRADES.includes(V.show)) return !cap && d.grades[x.id] === V.show;
+    if (V.show === "nograde") return inc && !cap && !GRADES.includes(d.grades[x.id]);
+    if (V.show === "todo") return !(isDone(x, "tier") && isDone(x, "score"));
+    return true;
+  }).sort((a, b) => {
+    const ka = SORT_KEY[V.sort](a), kb = SORT_KEY[V.sort](b);
+    const c = typeof ka === "string" ? ka.localeCompare(kb, "ko") : ka - kb;
+    return (c || sigs.indexOf(a) - sigs.indexOf(b)) * (V.dir === "desc" ? -1 : 1);
+  });
+  const SHOW_OPTS = [["all", "전체"], ["in", "경매 선수(포함)"], ["cap", "팀장만"], ["bench", "대기(빠진 사람)"], ...GRADES.map(g => [g, `경매 티어 ${g}`]), ["nograde", "경매 티어 없음"], ["todo", "검수 덜 된 사람"]];
+  const SORT_OPTS = [["signup", "신청 순"], ["score", "점수"], ["grade", "경매 티어"], ["peak", "최고 티어"], ["current", "현재 티어"], ["nick", "게임 닉네임"]];
+  const th = (key, label) => `<th class="sortable ${V.sort === key ? "on" : ""}" data-sort="${key}" title="눌러서 정렬">${label}${V.sort === key ? (V.dir === "asc" ? " ▲" : " ▼") : ""}</th>`;
   $("tabBody").innerHTML = `
     <div class="card">
       <h3>진행자</h3>
@@ -616,18 +645,25 @@ function renderPrep() {
         ${graded && gCnt.some(x => x !== d.caps.length) ? `<span class="warn"> — 티어마다 팀 수(${d.caps.length})만큼 있어야 해요</span>` : graded ? `<span style="color:var(--ok)"> — 팀마다 A·B·C·D 한 명씩</span>` : `<span style="color:var(--muted)"> — 아직 안 나눴어요 (안 나누면 티어 없이 경매)</span>`}</div>
       <div class="prep-bar">팀장 <b>${d.caps.length}</b>명 → 팀 <b>${d.caps.length}</b>개 · 경매 선수 <b>${nPlayers}</b>명 · 팀원 자리 ${slots}칸
         ${d.caps.length && nPlayers !== slots ? `<span class="warn"> — 선수가 자리보다 ${Math.abs(nPlayers - slots)}명 ${nPlayers < slots ? "적어요 (빈자리가 남아도 경매는 할 수 있어요)" : "많아요 (남는 선수는 팀에 못 들어가요)"}</span>` : ""}</div>
+      <div class="toolbar prep-tools">
+        <input id="pSearch" placeholder="닉네임·디스코드 이름 찾기" value="${esc(V.q)}">
+        <select id="pShow">${SHOW_OPTS.map(([k, l]) => `<option value="${k}" ${V.show === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+        <select id="pSort">${SORT_OPTS.map(([k, l]) => `<option value="${k}" ${V.sort === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+        <button class="btn" id="pDir" type="button">${V.dir === "asc" ? "▲ 오름차순" : "▼ 내림차순"}</button>
+        <span style="color:var(--muted);font-size:12px">${shown.length} / ${sigs.length}명 보는 중${V.q || V.show !== "all" ? ` · <a href="#" id="pReset">거르기 풀기</a>` : ""}</span>
+      </div>
       <div class="table-wrap"><table class="prep-table">
-        <thead><tr><th>포함</th><th>팀장 (누른 순서 = 팀 순서)</th><th>핸디캡</th><th>경매 티어</th><th>게임 닉네임</th><th>디스코드</th><th>최고/현재</th><th>점수</th><th>검수</th></tr></thead>
-        <tbody>${sigs.map(x => { const no = d.caps.indexOf(x.id) + 1, inc = no > 0 || !d.excluded.has(x.id);
+        <thead><tr><th>포함</th><th>팀장 (누른 순서 = 팀 순서)</th><th>핸디캡</th>${th("grade", "경매 티어")}${th("nick", "게임 닉네임")}<th>디스코드</th>${th("peak", "최고")}${th("current", "현재")}${th("score", "점수")}<th>검수</th></tr></thead>
+        <tbody>${shown.map(x => { const no = d.caps.indexOf(x.id) + 1, inc = no > 0 || !d.excluded.has(x.id);
           return `<tr class="${inc ? "" : "excluded"} ${no ? "cap" : ""}" data-sid="${x.id}">
             <td><input type="checkbox" data-inc ${inc ? "checked" : ""} ${no ? "disabled" : ""} ${dis}></td>
             <td><button class="star ${no ? "on" : ""}" data-cap ${dis}>${no ? `★ ${no}팀` : "★"}</button></td>
             <td>${no ? `<input type="number" data-hc min="0" step="${S.bidStep}" value="${d.handicaps[x.id] || 0}" ${dis}>` : ""}</td>
             <td>${no ? `<span style="color:var(--muted);font-size:12px">팀장</span>` : `<select data-grade ${dis}><option value="">-</option>${GRADES.map(g => `<option ${d.grades[x.id] === g ? "selected" : ""}>${g}</option>`).join("")}</select>`}</td>
-            <td><b>${esc(x.nick)}</b>${!inc ? `<span class="bench-chip">대기</span>` : ""}</td><td>${esc(x.discord_name)}</td><td>${esc(x.peak)} / ${esc(x.current)}</td>
+            <td><b>${esc(x.nick)}</b>${!inc ? `<span class="bench-chip">대기</span>` : ""}</td><td>${esc(x.discord_name)}</td><td>${esc(x.peak)}</td><td>${esc(x.current)}</td>
             <td><span class="score">${playerScore(x).toFixed(1)}</span>${x.score != null ? `<div class="calc">직접 정함</div>` : ""}</td>
             <td>${isDone(x, "tier") && isDone(x, "score") ? `<span class="chip done">완료</span>` : `<span class="chip part">덜 됨</span>`}</td></tr>`; }).join("")
-          || `<tr><td colspan="9" style="color:var(--muted);padding:20px;text-align:center">아직 신청이 없어요.</td></tr>`}</tbody>
+          || `<tr><td colspan="10" style="color:var(--muted);padding:20px;text-align:center">${sigs.length ? "조건에 맞는 사람이 없어요." : "아직 신청이 없어요."}</td></tr>`}</tbody>
       </table></div>
       <div style="color:var(--muted);font-size:12px">티어·점수는 ‘참가자’ 탭의 ‘고치기’에서 바꿔요(부계정은 점수 직접 입력). 경매 선수를 채운 뒤에 고쳐도 경매 화면에 바로 반영돼요.</div>
       <div><button class="btn primary" id="btnFill" ${!can || !setup || e.locked || !d.caps.length ? "disabled" : ""}>이 명단으로 경매 선수 채우기</button>
@@ -672,9 +708,14 @@ function renderPrep() {
     </div>`;
   updateW();
   const body = $("tabBody");
+  $("pSearch").oninput = ev => { V.q = ev.target.value; const pos = ev.target.selectionStart; renderPrep(); const f = $("pSearch"); f.focus(); f.setSelectionRange(pos, pos); };
   body.onclick = async ev => {
     if (ev.target.matches("[data-copy]")) return copyBtn(ev);
     const t = ev.target;
+    const sh = t.closest("[data-sort]");
+    if (sh) { if (V.sort === sh.dataset.sort) V.dir = V.dir === "asc" ? "desc" : "asc"; else { V.sort = sh.dataset.sort; V.dir = "asc"; } return renderPrep(); }
+    if (t.id === "pDir") { V.dir = V.dir === "asc" ? "desc" : "asc"; return renderPrep(); }
+    if (t.id === "pReset") { ev.preventDefault(); V.q = ""; V.show = "all"; return renderPrep(); }
     const tr = t.closest("[data-sid]");
     if (tr && t.closest("[data-cap]")) {
       const id = Number(tr.dataset.sid), i = d.caps.indexOf(id);
@@ -717,6 +758,8 @@ function renderPrep() {
     if (t.id === "btnOrderOk") { const r = await hostAct("set_order", d.order); if (r && r.ok) toast("순서를 확정했어요. 진행자 화면에 첫 선수가 올라갔어요."); }
   };
   body.onchange = ev => {
+    if (ev.target.id === "pShow") { V.show = ev.target.value; return renderPrep(); }
+    if (ev.target.id === "pSort") { V.sort = ev.target.value; return renderPrep(); }
     const tr = ev.target.closest("[data-sid]");
     if (tr && ev.target.matches("[data-grade]")) { d.grades[Number(tr.dataset.sid)] = ev.target.value; return renderPrep(); }
     if (tr && ev.target.matches("[data-inc]")) { const id = Number(tr.dataset.sid); if (ev.target.checked) d.excluded.delete(id); else d.excluded.add(id); renderPrep(); }
