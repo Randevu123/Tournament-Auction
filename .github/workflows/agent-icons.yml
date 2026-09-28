@@ -23,6 +23,12 @@ jobs:
             curl -fsS "$icon" -o "agents/$uuid.png"
             echo "$(jq -r '.role + " | " + .name' <<<"$row") | $(stat -c %s "agents/$uuid.png") bytes"
           done < /tmp/list.jsonl
+          # 폰에서도 빨리 뜨도록 128px로 줄임
+          pip install --quiet pillow
+          python3 -c "import glob; from PIL import Image
+          for f in glob.glob('agents/*.png'):
+              im = Image.open(f).convert('RGBA'); im.thumbnail((128, 128), Image.LANCZOS); im.save(f, optimize=True)"
+          du -sh agents
           jq -s 'map({name, role, file: ("agents/" + .uuid + ".png")}) | sort_by(.role, .name)' /tmp/list.jsonl > agents/agents.json
           echo "agents: $(jq length agents/agents.json)"
       - name: Save to the repository
