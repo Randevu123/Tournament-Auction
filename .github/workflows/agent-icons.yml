@@ -17,7 +17,7 @@ jobs:
           curl -fsS "https://valorant-api.com/v1/agents?isPlayableCharacter=true&language=ko-KR" -o /tmp/agents.json
           mkdir -p agents
           # 같은 이름이 두 번 오면 하나만
-          jq -c '[.data[] | {uuid, name: .displayName, role: .role.displayName, icon: .displayIcon}] | unique_by(.name) | .[]' /tmp/agents.json > /tmp/list.jsonl
+          jq -c '[.data[] | {uuid, name: .displayName, role: .role.displayName, icon: .displayIconSmall}] | unique_by(.name) | .[]' /tmp/agents.json > /tmp/list.jsonl
           while read -r row; do
             uuid=$(jq -r .uuid <<<"$row"); icon=$(jq -r .icon <<<"$row")
             curl -fsS "$icon" -o "agents/$uuid.png"
@@ -31,7 +31,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add agents
+          git add -A agents
           if git diff --cached --quiet; then echo "바뀐 아이콘이 없어요."; exit 0; fi
           git commit -m "Update agent icons from valorant-api.com"
           git push
