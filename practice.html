@@ -243,11 +243,12 @@ const cur = () => pById(P.current);
 function snapshot(pid, queue) {
   P.undo = (P.undo || []).concat([{ player: pid, unsold: pById(pid).unsold, queue: [...queue], points: P.teams.map(t => t.points) }]).slice(-30);
 }
-function canUndo() { return !!(P.undo && P.undo.length && P.status !== "setup" && !(["running", "paused"].includes(P.status) && P.bid_team !== null)); }
+function canUndo() { return !!(P.undo && P.undo.length && P.status !== "setup"); }   // 지금 선수에게 입찰이 있어도 됨 (그 입찰은 취소)
 function undoLast() {
-  if (!canUndo()) return toast(P.undo && P.undo.length ? "지금 선수에게 입찰이 들어와서 되돌릴 수 없어요. (마감한 뒤에 되돌릴 수 있어요)" : "되돌릴 결과가 없어요.");
+  if (!canUndo()) return toast("되돌릴 결과가 없어요.");
   const u = P.undo[P.undo.length - 1], p = pById(u.player);
-  if (!confirm(`${p.name}의 결과를 취소하고 다시 경매할까요?`)) return;
+  const cur = ["running", "paused"].includes(P.status) && P.bid_team !== null ? pById(P.current) : null;
+  if (!confirm(`${p.name}의 결과를 취소하고 다시 경매할까요?${cur ? `\n\n지금 경매 중인 ${cur.name}의 입찰(${P.bid_amount}P)도 취소되고, 대기 순서 맨 앞으로 돌아가요.` : ""}`)) return;
   p.team = null; p.price = null; p.how = null; p.unsold = u.unsold;
   P.teams.forEach((t, i) => { t.points = u.points[i]; });
   P.queue = [...u.queue]; P.current = p.id; P.status = "ready"; P.bid_amount = 0; P.bid_team = null;
@@ -679,10 +680,8 @@ function render() {
     el.querySelector('[data-k="max"]').innerHTML = open > 0 ? `최대 입찰 가능 <b>${maxBidOf(t)}P</b>${open > 1 ? ` · 빈자리 몫 ${c.reservePerSlot * (open - 1)}P 보관` : ""}` : "팀 완성";
     el.querySelector('[data-k="sum"]').textContent = sum.toFixed(1);
     el.querySelector('[data-k="avg"]').textContent = avg === null ? "-" : avg.toFixed(1);
-    const rows = roster.map(r => `<li><span class="who">${avatar(r, 22)}<span>${gradeBadge(r, "sm")}${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
-      priceTag(r)}</li>`);
-    const miss = missingGrades(s, t.idx);
-    while (rows.length < c.teamSize) rows.push(`<li class="empty">빈자리${miss.length ? ` <span style="margin-left:6px">${miss.shift()}</span>` : ""}</li>`);
+    const rows = tierSlots(s, t.idx).map(({ p: r, grade }) => r ? `<li><span class="who">${avatar(r, 22)}<span>${gradeBadge(r, "sm")}${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
+      priceTag(r)}</li>` : `<li class="empty">${emptySlotLabel(grade)}</li>`);
     el.querySelector('[data-k="roster"]').innerHTML = rows.join("");
     el.classList.toggle("leading", s.bid_team === t.idx && s.status === "running");
     let why = null, anyOk = false;

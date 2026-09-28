@@ -73,7 +73,7 @@
     <button class="btn" id="btnPause">일시정지</button>
     <button class="btn gold" id="btnHammer">지금 마감</button>
     <button class="btn" id="btnNext">다음 선수</button>
-    <button class="btn" id="btnUndo" title="가장 최근 결과부터 하나씩 취소하고 그 선수를 다시 경매해요 (최근 30개)">결과 되돌리기</button>
+    <button class="btn" id="btnUndo" title="가장 최근 결과부터 하나씩 취소하고 그 선수를 다시 경매해요 (최근 30개). 지금 선수에게 입찰이 있어도 됩니다(그 입찰은 취소).">결과 되돌리기</button>
     <label class="chk"><input type="checkbox" id="autoNext"> 다음 선수 자동 시작</label>
     <button class="btn" id="btnReset">처음부터 다시</button>
     <button class="btn" id="btnSound">소리 켜짐</button>
@@ -355,7 +355,8 @@ $("btnXlsx").addEventListener("click", () => {
 $("btnPause").addEventListener("click", () => host("pause"));
 $("btnUndo").addEventListener("click", () => {
   const p = S && S.players.find(x => x.id === S.undo_player);
-  if (confirm(`${p ? p.name : "가장 최근 선수"}의 결과를 취소하고 다시 경매할까요? (포인트·유찰 횟수도 돌려놔요)\n\n한 번 더 누르면 그 전 결과도 차례로 되돌릴 수 있어요.`)) host("undo");
+  const cur = S && ["running", "paused"].includes(S.status) && S.bid_team !== null ? S.players.find(x => x.id === S.current) : null;
+  if (confirm(`${p ? p.name : "가장 최근 선수"}의 결과를 취소하고 다시 경매할까요? (포인트·유찰 횟수도 돌려놔요)${cur ? `\n\n지금 경매 중인 ${cur.name}의 입찰(${S.bid_amount}P)도 취소되고, 대기 순서 맨 앞으로 돌아가요.` : ""}\n\n한 번 더 누르면 그 전 결과도 차례로 되돌릴 수 있어요.`)) host("undo");
 });
 $("btnPng").addEventListener("click", async () => {
   $("btnPng").disabled = true;
@@ -729,10 +730,8 @@ function render(prev) {
       ? `최대 입찰 가능 <b>${maxBid(s, t)}P</b>${open > 1 ? ` · 빈자리 몫 ${c.reservePerSlot * (open - 1)}P 보관` : ""}` : "팀 완성";
     el.querySelector('[data-k="sum"]').textContent = sum.toFixed(1);
     el.querySelector('[data-k="avg"]').textContent = avg === null ? "-" : avg.toFixed(1);
-    const rows = roster.map(r => `<li><span class="who">${avatar(r, 22)}<span>${gradeBadge(r, "sm")}${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
-      priceTag(r)}</li>`);
-    const miss = missingGrades(s, t.idx);
-    while (rows.length < c.teamSize) rows.push(`<li class="empty">빈자리${miss.length ? ` <span style="margin-left:6px">${miss.shift()}</span>` : ""}</li>`);
+    const rows = tierSlots(s, t.idx).map(({ p: r, grade }) => r ? `<li><span class="who">${avatar(r, 22)}<span>${gradeBadge(r, "sm")}${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
+      priceTag(r)}</li>` : `<li class="empty">${emptySlotLabel(grade)}</li>`);
     el.querySelector('[data-k="roster"]').innerHTML = rows.join("");
     el.classList.toggle("leading", s.bid_team === t.idx && s.status === "running");
   }

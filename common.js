@@ -227,10 +227,29 @@ function localProfiles() {
 }
 
 /* [4] 경매 규칙 계산 (화면 표시용 — 진짜 판정은 서버가 한 번 더 합니다) */
+// 팀 명단: 팀장 먼저, 그다음 경매 티어 A → B → C → D 순
+function gradeRank(p) { const i = GRADES.indexOf(p.grade); return i < 0 ? GRADES.length : i; }
 function rosterOf(state, teamIdx) {
   return state.players.filter(p => p.team === teamIdx)
-    .sort((a, b) => (b.how === "captain") - (a.how === "captain") || a.id - b.id);
+    .sort((a, b) => (b.how === "captain") - (a.how === "captain") || gradeRank(a) - gradeRank(b) || a.id - b.id);
 }
+// 팀 카드의 칸: 경매 티어를 쓰면 팀장 다음에 A·B·C·D 자리가 차례로 있고 뽑힌 선수가 자기 티어 자리에 들어감
+// 돌려줌: [{ p: 선수 또는 null, grade: 빈 자리의 티어 또는 null }] (팀 인원만큼)
+function tierSlots(state, teamIdx) {
+  const roster = rosterOf(state, teamIdx), size = state.config.teamSize;
+  const graded = state.players.some(p => p.grade);
+  if (!graded) return roster.map(p => ({ p, grade: null })).concat(Array.from({ length: Math.max(0, size - roster.length) }, () => ({ p: null, grade: null })));
+  const caps = roster.filter(p => p.how === "captain"), rest = roster.filter(p => p.how !== "captain");
+  const out = caps.map(p => ({ p, grade: null }));
+  for (const g of GRADES) {
+    const i = rest.findIndex(p => p.grade === g);
+    out.push(i >= 0 ? { p: rest.splice(i, 1)[0], grade: g } : { p: null, grade: g });
+  }
+  rest.forEach(p => { const e = out.find(x => !x.p && !x.grade); if (e) e.p = p; else out.push({ p, grade: null }); });
+  while (out.length < size) out.push({ p: null, grade: null });
+  return out;
+}
+function emptySlotLabel(grade) { return grade ? `${gradeBadge({ grade }, "sm")}<span>${grade}티어 자리</span>` : "빈자리"; }
 function openSlots(state, teamIdx) { return state.config.teamSize - rosterOf(state, teamIdx).length; }
 function maxBid(state, team) {
   const open = openSlots(state, team.idx);

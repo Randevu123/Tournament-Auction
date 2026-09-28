@@ -153,7 +153,8 @@
   .roster li { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 13px; padding: 4px 8px; border-radius: 6px; background: var(--panel-2); }
   .roster li .who { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .roster li .who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .roster li.empty { background: transparent; border: 1px dashed var(--line); color: var(--muted); min-height: 30px; }
+  .roster li.empty { background: transparent; border: 1px dashed var(--line); color: var(--muted); min-height: 30px; gap: 6px; }
+  .roster li.empty .grade, .tm li.empty .grade { opacity: .55; }
   .roster li .pr { color: var(--gold); font-weight: 700; white-space: nowrap; }
   .roster li .rnd { color: var(--warn); }
   .roster li .cap { color: var(--c); }

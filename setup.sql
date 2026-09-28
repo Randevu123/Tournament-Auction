@@ -284,8 +284,7 @@ language sql stable security definer set search_path = public as $$
     'title', a.title, 'locked', _locked(a),
     'undo_count', case when jsonb_typeof(a.undo) = 'array' then jsonb_array_length(a.undo) else 0 end,
     'undo_player', case when jsonb_typeof(a.undo) = 'array' then (a.undo -> -1 ->> 'player')::int end,
-    'can_undo', (jsonb_typeof(a.undo) = 'array' and jsonb_array_length(a.undo) > 0 and a.status <> 'setup'
-                 and not (a.status in ('running', 'paused') and a.bid_team is not null)),
+    'can_undo', (jsonb_typeof(a.undo) = 'array' and jsonb_array_length(a.undo) > 0 and a.status <> 'setup'),
     'events', (select coalesce(jsonb_agg(jsonb_build_object('id', e.id, 'kind', e.kind, 'body', e.body) order by e.id desc), '[]')
                from (select * from events where auction_id = a.id order by id desc limit 40) e)
   ) from auctions a where a.id = p_id
@@ -833,12 +832,11 @@ begin
       perform _log(p_id, '', format('%s 점수·티어를 고쳤습니다.', r.name));
     end if;
 
-  -- 결과 되돌리기: 가장 최근 결과부터 하나씩, 그 선수를 다시 경매에 올림 (지금 선수에게 입찰이 들어오기 전까지만)
+  -- 결과 되돌리기: 가장 최근 결과부터 하나씩, 그 선수를 다시 경매에 올림.
+  -- 지금 선수가 경매 중(입찰이 있어도)이면 그 선수의 입찰은 취소되고 대기 순서 맨 앞으로 돌아감 (포인트는 낙찰 때만 빠지므로 돌려줄 것 없음)
   elsif p_action = 'undo' then
     if jsonb_typeof(a.undo) is distinct from 'array' or jsonb_array_length(a.undo) = 0 then
       v_reason := '되돌릴 결과가 없어요.';
-    elsif a.status in ('running', 'paused') and a.bid_team is not null then
-      v_reason := '지금 선수에게 입찰이 들어와서 되돌릴 수 없어요. (마감한 뒤에 되돌릴 수 있어요)';
     elsif a.status not in ('result', 'ready', 'running', 'paused', 'done') then
       v_reason := '지금은 되돌릴 수 없어요.';
     else

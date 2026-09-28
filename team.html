@@ -240,10 +240,8 @@ function render(prev) {
 
   // 우리 팀
   const roster = rosterOf(s, ME), { sum, avg } = teamScore(roster), open = c.teamSize - roster.length;
-  const rows = roster.map(r => `<li><span class="who">${avatar(r, 22)}<span>${gradeBadge(r, "sm")}${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
-    priceTag(r)}</li>`);
-  const miss = missingGrades(s, ME);
-  while (rows.length < c.teamSize) rows.push(`<li class="empty">빈자리${miss.length ? ` · ${miss.shift()}티어 필요` : ""}</li>`);
+  const rows = tierSlots(s, ME).map(({ p: r, grade }) => r ? `<li><span class="who">${avatar(r, 22)}<span>${gradeBadge(r, "sm")}${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
+    priceTag(r)}</li>` : `<li class="empty">${emptySlotLabel(grade)}</li>`);
   $("mine").innerHTML = `
     <div class="row"><h3 style="margin:0">우리 팀</h3><span class="team-slots">빈자리 <b>${open} / ${c.teamSize}</b></span></div>
     <div class="team-points" id="myPoints">${me.points}<small>P 남음</small></div>
