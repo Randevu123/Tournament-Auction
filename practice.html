@@ -32,6 +32,7 @@
     <button class="btn" id="btnPause">일시정지</button>
     <button class="btn gold" id="btnHammer">지금 마감</button>
     <button class="btn" id="btnNext">다음 선수</button>
+    <button class="btn" id="btnUndo">방금 결과 취소</button>
     <label class="chk"><input type="checkbox" id="autoNext"> 다음 선수 자동 시작</label>
     <button class="btn" id="btnReset">처음부터 다시</button>
     <button class="btn" id="btnSound">소리 켜짐</button>
@@ -60,7 +61,7 @@
       </div>
     </div>
     <div class="result-box" id="resultBox" hidden>
-      <div class="result-head"><h2>경매 <span>결과</span></h2><button class="btn big" id="btnReveal">결과 발표 다시 보기</button><button class="btn gold big" id="btnXlsx">엑셀로 내려받기</button><span class="state-line" id="resultNote"></span></div>
+      <div class="result-head"><h2>경매 <span>결과</span></h2><button class="btn big" id="btnReveal">결과 발표 다시 보기</button><button class="btn gold big" id="btnXlsx">엑셀로 내려받기</button><button class="btn big" id="btnPng">이미지로 저장</button><span class="state-line" id="resultNote"></span></div>
       <div id="resultBody"></div>
     </div>
     <div id="lotLeft">
@@ -229,12 +230,39 @@ function maxBidOf(t) { const o = openOf(t.idx); return o <= 0 ? 0 : t.points - P
 const pById = id => P.players.find(p => p.id === id);
 const cur = () => pById(P.current);
 
+// 되돌리기용 직전 상태 (온라인 서버와 같은 방식)
+function snapshot(pid, queue) { P.undo = { player: pid, unsold: pById(pid).unsold, queue: [...queue], points: P.teams.map(t => t.points), seq: lastSeq + 1 }; }
+function canUndo() { return !!(P.undo && P.last_result && P.undo.seq === P.last_result.seq && !(["running", "paused"].includes(P.status) && P.bid_team !== null)); }
+function undoLast() {
+  if (!canUndo()) return toast("되돌릴 결과가 없어요.");
+  const u = P.undo, p = pById(u.player);
+  if (!confirm(`${p.name}의 결과를 취소하고 다시 경매할까요?`)) return;
+  p.team = null; p.price = null; p.how = null; p.unsold = u.unsold;
+  P.teams.forEach((t, i) => { t.points = u.points[i]; });
+  P.queue = [...u.queue]; P.current = p.id; P.status = "ready"; P.bid_amount = 0; P.bid_team = null;
+  P.ends_at = null; P.next_at = null; P.paused_left_ms = null; P.last_result = null; P.undo = null;
+  log(`되돌리기 — ${p.name} 결과를 취소하고 다시 경매합니다.`); render();
+}
 function nextPlayer() {
   const anyOpen = P.teams.some(t => openOf(t.idx) > 0);
   if (!anyOpen || !P.queue.length) {
     P.status = "done"; P.current = null; P.bid_amount = 0; P.bid_team = null;
     log(P.queue.length ? `모든 팀이 꽉 찼습니다. 남은 선수 ${P.queue.length}명.` : "모든 선수의 경매가 끝났습니다.", "sold");
     return render();
+  }
+  // 그 티어를 받을 수 있는 팀이 하나뿐이면 0P 자동 배정
+  const np = pById(P.queue[0]);
+  if (np.grade) {
+    const ok = P.teams.filter(t => openOf(t.idx) > 0 && !hasGrade(P, t.idx, np.grade));
+    if (ok.length === 1) {
+      snapshot(np.id, P.queue.slice(1));
+      P.queue.shift(); P.current = np.id; np.team = ok[0].idx; np.price = 0; np.how = "auto";
+      P.bid_amount = 0; P.bid_team = null; P.ends_at = null; P.paused_left_ms = null;
+      P.last_result = { kind: "auto", player: np.id, team: ok[0].idx, seq: ++lastSeq };
+      P.status = "result"; P.next_at = Date.now() + P.config.resultShowMs;
+      log(`${np.name} → ${ok[0].name} 자동 배정 (${np.grade}티어를 받을 수 있는 팀이 하나뿐, 0P)`, "sold");
+      SFX.random(); flashResult(P); return render();
+    }
   }
   P.current = P.queue.shift(); P.bid_amount = 0; P.bid_team = null; P.next_at = null; P.paused_left_ms = null;
   SFX.lot();
@@ -281,6 +309,7 @@ function placeBid(idx, amount) {
 function finishLot() {
   if (P.status !== "running" && P.status !== "paused") return;
   const p = cur();
+  snapshot(p.id, P.queue);
   if (P.bid_team !== null) {
     const t = P.teams[P.bid_team];
     t.points -= P.bid_amount; p.team = t.idx; p.price = P.bid_amount; p.how = "bid";
@@ -602,6 +631,7 @@ function render() {
   $("btnPause").disabled = s.status !== "running";
   $("btnHammer").disabled = !(s.status === "running" || s.status === "paused");
   $("btnNext").disabled = s.status !== "result";
+  $("btnUndo").disabled = !canUndo();
   $("progress").textContent = `자리 ${s.players.filter(x => x.team !== null).length} / ${s.teams.length * c.teamSize}`;
   const queue = s.queue.map(pById);
   $("queue").innerHTML = queue.length
@@ -620,7 +650,7 @@ function render() {
     el.querySelector('[data-k="sum"]').textContent = sum.toFixed(1);
     el.querySelector('[data-k="avg"]').textContent = avg === null ? "-" : avg.toFixed(1);
     const rows = roster.map(r => `<li><span class="who">${avatar(r, 22)}<span>${gradeBadge(r, "sm")}${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
-      r.how === "captain" ? `<span class="pr cap">팀장</span>` : r.how === "random" ? `<span class="pr rnd">무작위</span>` : `<span class="pr">${r.price}P</span>`}</li>`);
+      priceTag(r)}</li>`);
     const miss = missingGrades(s, t.idx);
     while (rows.length < c.teamSize) rows.push(`<li class="empty">빈자리${miss.length ? ` <span style="margin-left:6px">${miss.shift()}</span>` : ""}</li>`);
     el.querySelector('[data-k="roster"]').innerHTML = rows.join("");
@@ -661,6 +691,8 @@ $("btnXlsx").onclick = () => {
   $("resultNote").textContent = kind === "xlsx" ? "엑셀 파일을 내려받았어요." : "엑셀 도구를 못 불러와서 CSV 파일(엑셀에서 열림)로 내려받았어요.";
 };
 $("btnPause").onclick = pause;
+$("btnUndo").onclick = undoLast;
+$("btnPng").onclick = () => saveResultImage(P, "연습 경매").then(() => ($("resultNote").textContent = "결과 이미지를 저장했어요.")).catch(() => toast("이미지를 만들지 못했어요."));
 $("btnHammer").onclick = finishLot;
 $("btnNext").onclick = () => { if (P.status === "result") nextPlayer(); };
 $("autoNext").onchange = e => { P.auto_start = e.target.checked; };
@@ -673,6 +705,7 @@ document.addEventListener("keydown", e => {
 });
 
 mountSoundToggle($("btnSound"));
+keepScreenOn(() => P && !["setup", "done"].includes(P.status));
 init();
 </script>
 </body>

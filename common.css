@@ -448,3 +448,13 @@ a.home-card:hover { transform: translateY(-4px); border-color: var(--accent); bo
 .home-legacy summary { cursor: pointer; }
 .home-legacy p { margin: 8px 0; }
 @media (max-width: 860px) { .home-cards { grid-template-columns: 1fr; } .home { padding-top: 28px; } }
+
+/* 결과 이미지 저장용 (화면 밖에서 그림) */
+.shot-box { padding: 36px 40px 24px; background: radial-gradient(900px 400px at 20% -10%, rgba(255,70,85,.25), transparent 60%), #0b0d14; color: var(--text); display: grid; gap: 18px; font-family: "Noto Sans KR", system-ui, sans-serif; }
+.shot-head { display: flex; align-items: baseline; gap: 18px; }
+.shot-head h2 { margin: 0; font-family: var(--num); font-weight: 400; font-size: 44px; }
+.shot-head small { color: var(--muted); font-size: 16px; margin-left: auto; }
+.shot-box .result-grid { grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); }
+.shot-box .result-team, .shot-box .result-grid.reveal .result-team { animation: none !important; opacity: 1 !important; transform: none !important; }
+.shot-box .result-team.top { box-shadow: none !important; border-width: 2px; border-top-width: 5px; }
+.shot-box .riot-notice { margin: 0; }

@@ -205,8 +205,9 @@ function render(prev) {
   // 선수 카드
   if (!p) {
     if (s.status === "done") {
-      $("lot").innerHTML = `<div class="result-head"><h2>경매 <span>결과</span></h2><button class="btn gold" id="btnXlsx">엑셀로 내려받기</button></div>${resultHtml(s)}`;
+      $("lot").innerHTML = `<div class="result-head"><h2>경매 <span>결과</span></h2><button class="btn gold" id="btnXlsx">엑셀로 내려받기</button><button class="btn" id="btnPng">이미지로 저장</button></div>${resultHtml(s)}`;
       $("btnXlsx").onclick = () => downloadResultXlsx(S, S.title);
+      $("btnPng").onclick = () => saveResultImage(S, S.title).catch(() => toast("이미지를 만들지 못했어요."));
     } else {
       const title = { setup: "경매 준비 중" }[s.status] || "잠시만요";
       const sub = s.status === "setup" ? "진행자가 경매 순서를 정하면 여기에 선수가 올라옵니다." : "";
@@ -237,7 +238,7 @@ function render(prev) {
   // 우리 팀
   const roster = rosterOf(s, ME), { sum, avg } = teamScore(roster), open = c.teamSize - roster.length;
   const rows = roster.map(r => `<li><span class="who">${avatar(r, 22)}<span>${gradeBadge(r, "sm")}${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
-    r.how === "captain" ? `<span class="pr cap">팀장</span>` : r.how === "random" ? `<span class="pr rnd">무작위</span>` : `<span class="pr">${r.price}P</span>`}</li>`);
+    priceTag(r)}</li>`);
   const miss = missingGrades(s, ME);
   while (rows.length < c.teamSize) rows.push(`<li class="empty">빈자리${miss.length ? ` · ${miss.shift()}티어 필요` : ""}</li>`);
   $("mine").innerHTML = `
@@ -330,6 +331,7 @@ function renderTimer() {
 requestAnimationFrame(renderTimer);
 
 mountSoundToggle($("btnSound"));
+keepScreenOn(() => S && !["setup", "done"].includes(S.status));   // 경매 중엔 폰 화면이 꺼지지 않게
 // 경매 중에 실수로 나가지 않도록 한 번 물어봄 (나가도 같은 팀장 링크로 다시 들어오면 됨)
 $("homeBtn").addEventListener("click", e => {
   if (S && ["ready", "running", "paused", "result"].includes(S.status) && !confirm("경매가 진행 중이에요. 홈으로 갈까요? (이 팀장 링크로 다시 들어오면 이어서 할 수 있어요)")) e.preventDefault();

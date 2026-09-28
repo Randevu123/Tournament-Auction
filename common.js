@@ -96,8 +96,10 @@ function agentIcon(name, size) {
 }
 // 주 요원 고르기 칸 (신청 화면·운영자 콘솔이 함께 씀). 누르면 고르고 다시 누르면 빠짐, 최대 3개
 function mountAgentPicker(root, selected, onChange) {
-  const picked = selected.slice(0, MAX_AGENTS);
+  const picked = selected.slice(0, MAX_AGENTS), me = {};
+  root._picker = me;                       // 같은 칸에 다시 만들면 예전 것은 그리지 않음
   function draw() {
+    if (root._picker !== me) return;
     root.className = "agent-pick";
     root.innerHTML = Object.entries(AGENTS).map(([role, list]) => `<div class="role"><small>${role}</small><div>${list.map(a => {
       const i = picked.indexOf(a);
@@ -291,7 +293,7 @@ function mountSoundToggle(btn) {
 function soundForState(prev, s, { myTeam = null } = {}) {
   if (!prev) return;
   if (s.last_result && (!prev.last_result || s.last_result.seq !== prev.last_result.seq)) {
-    const k = s.last_result.kind; if (k === "sold") SFX.sold(); else if (k === "random") SFX.random(); else SFX.unsold();
+    const k = s.last_result.kind; if (k === "sold") SFX.sold(); else if (k === "random" || k === "auto") SFX.random(); else SFX.unsold();
     return;
   }
   if (s.current !== prev.current && s.current !== null) SFX.lot();
@@ -312,13 +314,73 @@ function countdownTicker() {
   };
 }
 
+/* [4-4] 경매 중 폰·PC 화면이 저절로 꺼지지 않게 (지원하는 브라우저만) */
+function keepScreenOn(isActive) {
+  let lock = null, busy = false;
+  async function sync() {
+    if (!("wakeLock" in navigator) || busy) return;
+    busy = true;
+    try {
+      const want = isActive() && document.visibilityState === "visible";
+      if (want && !lock) { lock = await navigator.wakeLock.request("screen"); lock.addEventListener("release", () => { lock = null; }); }
+      else if (!want && lock) { await lock.release(); lock = null; }
+    } catch (e) { /* 배터리 절약 모드 등으로 거절되면 그냥 둠 */ }
+    busy = false;
+  }
+  document.addEventListener("visibilitychange", sync);
+  setInterval(sync, 5000); sync();
+}
+
+/* [4-5] 결과를 이미지(PNG) 한 장으로 저장 — 디스코드에 바로 올리기 좋게 */
+function loadScript(src) {
+  return new Promise((ok, fail) => { const t = document.createElement("script"); t.src = src; t.onload = ok; t.onerror = fail; document.head.appendChild(t); });
+}
+async function saveResultImage(state, title) {
+  if (!window.html2canvas) await loadScript("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js");
+  const n = state.teams.length, cols = n <= 4 ? n : n <= 6 ? 3 : 4;
+  const box = document.createElement("div");
+  box.className = "shot-box";
+  box.style.cssText = `position:fixed;left:-20000px;top:0;width:${cols * 380 + 80}px;--cols:${cols}`;
+  const pad = x => String(x).padStart(2, "0"), d = new Date();
+  box.innerHTML = `<div class="shot-head"><div class="logo">VALORANT <span>내전 경매</span></div><h2>${esc(title || "경매 결과")}</h2>
+      <small>${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}</small></div>
+    ${resultHtml(state, { discord: false })}<p class="riot-notice">${esc(RIOT_NOTICE)}</p>`;
+  document.body.appendChild(box);
+  try {
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    // 못 불러온 디스코드 사진(글자 그림)은 글자 칸으로 바꿔서 그림
+    await new Promise(r => setTimeout(r, 300));
+    box.querySelectorAll("img.av").forEach(img => {
+      if (img.src.startsWith("data:image/svg") || (img.complete && !img.naturalWidth)) {
+        const sp = document.createElement("span"); sp.className = "av ph"; sp.style.cssText = img.style.cssText;
+        sp.style.fontSize = Math.round(parseInt(img.style.width) * 0.45) + "px"; sp.textContent = img.dataset.ch || "?"; img.replaceWith(sp);
+      }
+    });
+    const canvas = await window.html2canvas(box, { backgroundColor: "#0b0d14", scale: 1, useCORS: true, logging: false });
+    const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
+    const url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = `auction-result_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.png`;
+    document.body.appendChild(a); a.click(); setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 4000);
+    return true;
+  } finally { box.remove(); }
+}
+
 /* [5] 화면 도우미 */
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
+function letterSvg(ch) {       // 사진을 못 불러왔을 때 대신 쓰는 글자 그림
+  return "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#2a3145"/><text x="50" y="66" font-size="48" text-anchor="middle" fill="#fff" font-family="sans-serif">${ch.replace(/[<&>'"]/g, "")}</text></svg>`);
+}
 function avatar(p, size) {
   if (p && p.photo && p.photo.startsWith("data:image/")) {
     return `<img class="av" src="${esc(p.photo)}" alt="" style="width:${size}px;height:${size}px">`;
+  }
+  // 사진이 없으면 디스코드 프로필 사진 (디스코드 주소만 씀)
+  const dc = p && (p.dc_avatar || p.discord_avatar);
+  if (dc && /^https:\/\/cdn\.discordapp\.com\//.test(dc)) {
+    const ch = [...(p.name || p.nick || "?")][0] || "?";
+    return `<img class="av" src="${esc(dc)}" alt="" data-ch="${esc(ch)}" referrerpolicy="no-referrer" style="width:${size}px;height:${size}px" onerror="this.onerror=null;this.src='${letterSvg(ch)}'">`;
   }
   return `<span class="av ph" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.45)}px">${esc([...(p ? p.name : "?")][0] || "?")}</span>`;
 }
@@ -345,6 +407,7 @@ function flashResult(state) {
   const t = state.teams[r.team];
   if (r.kind === "sold") flash("낙찰!", `<em>${esc(t.name)}</em> · ${esc(p.name)} · ${r.price}P`, t.color, p);
   else if (r.kind === "random") flash("무작위 배정", `${esc(p.name)} → <em>${esc(t.name)}</em>`, t.color, p);
+  else if (r.kind === "auto") flash("자동 배정", `${esc(p.name)} → <em>${esc(t.name)}</em> · ${esc(p.grade || "")}티어 남은 팀이 하나`, t.color, p);
   else flash("유찰", `${esc(p.name)} · 순서 맨 뒤로`, "#8a93ab", p);
 }
 function eventsHtml(events) {
@@ -556,7 +619,12 @@ function resultTeams(state) {
     return { team: t, roster, start, used: start - t.points, sum, avg };
   });
 }
-function howLabel(p) { return p.how === "captain" ? "팀장" : p.how === "random" ? "유찰 → 무작위 배정" : "낙찰"; }
+function howLabel(p) { return p.how === "captain" ? "팀장" : p.how === "random" ? "유찰 → 무작위 배정" : p.how === "auto" ? "자동 배정" : "낙찰"; }
+// 팀 명단의 오른쪽 값: 팀장 / 무작위 / 자동 / 낙찰가
+function priceTag(r) {
+  return r.how === "captain" ? `<span class="pr cap">팀장</span>` : r.how === "random" ? `<span class="pr rnd">무작위</span>`
+    : r.how === "auto" ? `<span class="pr rnd">자동</span>` : `<span class="pr">${r.price}P</span>`;
+}
 
 // 팀 순위 = 티어 점수 합계 순 (새 실력 점수를 만들지 않고, 신청 티어 점수표 합계만 씀)
 function resultRanks(state) {
@@ -574,10 +642,10 @@ function resultHtml(state, { reveal = false, discord = true } = {}) {
         ${rank[t.idx] === 1 && teams.length > 1 ? `<div class="rt-crown">우승 후보</div>` : ""}
         <div class="rt-head"><b>${esc(t.name)}</b><span class="rt-rank">점수 합계 ${rank[t.idx]}위</span><span>${roster.length}명</span></div>
         <div class="rt-nums"><div><small>남은 포인트</small><b>${t.points}P</b></div><div><small>시작</small><b>${start}P</b></div><div><small>점수 합계</small><b>${sum.toFixed(1)}</b></div><div><small>평균</small><b>${avg === null ? "-" : avg.toFixed(1)}</b></div></div>
-        <table class="rt-table"><tbody>${roster.map(p => `<tr class="${p.how === "random" ? "rnd" : ""}">
+        <table class="rt-table"><tbody>${roster.map(p => `<tr class="${p.how === "random" || p.how === "auto" ? "rnd" : ""}">
           <td>${avatar(p, 22)}</td><td>${gradeBadge(p, "sm")}<b>${esc(p.name)}</b>${discord && p.discord ? `<small>${esc(p.discord)}</small>` : ""}</td>
           <td>${esc(p.pos)}</td><td class="sc">${playerScore(p).toFixed(1)}</td>
-          <td class="pr">${p.how === "captain" ? "팀장" : p.how === "random" ? "무작위" : `${p.price}P`}</td></tr>`).join("")}</tbody></table>
+          <td class="pr">${p.how === "captain" ? "팀장" : p.how === "random" ? "무작위" : p.how === "auto" ? "자동" : `${p.price}P`}</td></tr>`).join("")}</tbody></table>
       </div>`).join("")}</div>
     ${left.length ? `<div class="result-left">팀에 못 들어간 선수 ${left.length}명: ${left.map(p => esc(p.name)).join(", ")}</div>` : ""}`;
 }
@@ -588,7 +656,7 @@ function downloadResultXlsx(state, title) {
   const rows = [["팀", "구분", "경매 티어", "선수 닉네임", "디스코드 이름", "최고 티어", "현재 티어", "티어 점수", "포지션", "주 요원", "낙찰가", "비고"]];
   teams.forEach(({ team: t, roster }) => roster.forEach(p => rows.push([
     t.name, howLabel(p), p.grade || "", p.name, p.discord || "", p.peak, p.current, Number(playerScore(p).toFixed(1)), p.pos, agentsOf(p).join(", "),
-    p.how === "bid" ? p.price : 0, p.how === "random" ? "유찰되어 무작위로 배정됨" : p.how === "captain" ? "팀장" : ""])));
+    p.how === "bid" ? p.price : 0, p.how === "random" ? "유찰되어 무작위로 배정됨" : p.how === "auto" ? "그 티어를 받을 팀이 하나뿐이라 자동 배정" : p.how === "captain" ? "팀장" : ""])));
   const summary = [["팀", "팀장", "인원", "시작 포인트", "핸디캡", "쓴 포인트", "남은 포인트", "티어 점수 합계", "티어 점수 평균"]];
   teams.forEach(({ team: t, roster, start, used, sum, avg }) => summary.push([
     t.name, (roster.find(p => p.how === "captain") || {}).name || "", roster.length, start, t.handicap || 0, used, t.points,

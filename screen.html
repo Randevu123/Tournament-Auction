@@ -446,7 +446,7 @@ function renderTeams(s, prev) {
     if (old !== t.points) bumpEl(pts, "changed");
     const had = new Set(prev ? rosterOf(prev, t.idx).map(r => r.id) : roster.map(r => r.id));
     const rows = roster.map(r => `<li class="${had.has(r.id) ? "" : "fresh"}">${avatar(r, 30)}<span class="w">${gradeBadge(r, "sm")}${esc(r.name)}</span>${
-      r.how === "captain" ? `<span class="pr cap">팀장</span>` : r.how === "random" ? `<span class="pr rnd">무작위</span>` : `<span class="pr">${r.price}P</span>`}</li>`);
+      priceTag(r)}</li>`);
     const miss = missingGrades(s, t.idx);
     while (rows.length < c.teamSize) rows.push(`<li class="empty">${miss.length ? `${miss.shift()}티어 빈자리` : "빈자리"}</li>`);
     el.querySelector('[data-k="roster"]').innerHTML = rows.join("");

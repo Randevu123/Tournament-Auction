@@ -185,6 +185,7 @@
   </div>
   <div class="calc" id="eCalc"></div>
   <div class="field"><label>주 요원 (최대 3개, 누른 순서대로)</label><div id="eAgents"></div></div>
+  <div class="field"><label>각오 한마디 (선수 카드에 나와요)</label><input id="eMotto" maxlength="60"></div>
   <div class="field"><label>운영자 메모 (참가자에게는 안 보여요)</label><textarea id="eMemo" maxlength="200"></textarea></div>
   <div class="warn-note">티어를 바꾸면 이 사람의 티어 검수와 점수 재확인이 처음부터 다시 시작돼요.</div>
   <div class="row"><button class="btn" data-close>닫기</button><button class="btn primary" id="btnEditSave">저장</button></div>
@@ -332,12 +333,14 @@ function svcCardHtml() {
       <div><small>응답 속도</small><b>${svc.rtt}ms</b></div>
       <div><small>이 확인 전 마지막 사용</small><b>${ago(svc.last_activity)}</b></div>
       <div><small>데이터베이스 사용량 (무료 500MB)</small><b>${mb.toFixed(1)}MB</b></div>
+      <div><small>그중 선수 사진</small><b>${((svc.photo_bytes || 0) / 1048576).toFixed(1)}MB</b></div>
       <div><small>회차 · 신청</small><b>${svc.rounds} · ${svc.signups}</b></div>
       <div><small>자동 깨우기 (3일마다)</small><b>${svc.last_auto_ping ? ago(svc.last_auto_ping) : "아직 없음"}</b></div>
     </div>
     <div style="color:${idleDays > 5 ? "var(--warn)" : "var(--muted)"};font-size:13px;line-height:1.6">
       무료 요금제는 7일 동안 쓰지 않으면 멈춰요. 운영자 콘솔을 열 때마다 ‘사용 중’ 기록을 남겨서 7일을 다시 세요.
       GitHub가 3일마다 서버를 자동으로 깨우고 있어요. 그래도 <b>내전 전날 이 화면을 한 번 열어 확인하면 가장 안전해요.</b>${idleDays > 5 ? ` (이번엔 ${Math.floor(idleDays)}일 만에 열었어요)` : ""}</div>
+    ${mb > 350 ? `<div class="warn-note">사용량이 무료 한도(500MB)에 가까워요. 지난 회차의 ‘일정 · 신청 마감’ 탭에서 ‘선수 사진 지우기’로 줄일 수 있어요.</div>` : ""}
     <div><button class="btn" id="btnSvcRe">다시 확인</button></div>`;
 }
 $("svc").onclick = () => { view = "staff"; lastSig = ""; render(); refresh(); };
@@ -527,6 +530,7 @@ function openEdit(id) {
   $("eNick").value = s.nick; $("ePeak").value = s.peak; $("eCur").value = s.current; $("ePos").value = s.pos; $("eMemo").value = s.memo || "";
   $("eScore").value = s.score != null ? s.score : "";
   editAgents = mountAgentPicker($("eAgents"), agentsOf(s));
+  $("eMotto").value = s.motto || "";
   updateEditCalc();
   $("editModal").classList.add("show");
 }
@@ -538,7 +542,7 @@ function updateEditCalc() {
 $("btnEditSave").onclick = async () => {
   const sc = $("eScore").value.trim();
   if (sc !== "" && !(Number(sc) >= 0 && Number(sc) <= 1000)) return toast("점수는 0에서 1000 사이로 적어 주세요.");
-  const r = await mutate("signup_update", { p_signup: editing.id, p_patch: { nick: $("eNick").value, peak: $("ePeak").value, current: $("eCur").value, pos: $("ePos").value, agents: editAgents.get(), memo: $("eMemo").value, score: sc === "" ? null : Number(sc) } });
+  const r = await mutate("signup_update", { p_signup: editing.id, p_patch: { nick: $("eNick").value, peak: $("ePeak").value, current: $("eCur").value, pos: $("ePos").value, agents: editAgents.get(), motto: $("eMotto").value, memo: $("eMemo").value, score: sc === "" ? null : Number(sc) } });
   if (r && r.ok) $("editModal").classList.remove("show");
 };
 
@@ -735,9 +739,10 @@ function renderResult() {
   if (!st.teams.length) { $("tabBody").innerHTML = `<div class="empty-view">아직 경매 선수를 채우지 않았어요. ‘경매 준비’ 탭에서 시작하세요.</div>`; return; }
   $("tabBody").innerHTML = `<div class="result-box">
       <div class="result-head"><h2>${done ? "경매 <span>결과</span>" : "지금까지의 <span>팀 구성</span>"}</h2>
-        <button class="btn gold big" id="btnXlsx">엑셀로 내려받기</button>
+        <button class="btn gold big" id="btnXlsx">엑셀로 내려받기</button><button class="btn big" id="btnPng">이미지로 저장</button>
         <span class="state-line">${done ? "경매가 끝났어요." : `경매가 아직 안 끝났어요 (${STATUS_LABEL[st.status] || st.status}). 지금 상태로 받을 수 있어요.`}</span></div>
       ${resultHtml(st)}</div>`;
+  $("btnPng").onclick = () => saveResultImage(st, detail.event.title).then(() => toast("결과 이미지를 저장했어요.")).catch(() => toast("이미지를 만들지 못했어요."));
   $("btnXlsx").onclick = () => { const k = downloadResultXlsx(st, detail.event.title); toast(k === "xlsx" ? "엑셀 파일을 내려받았어요." : "엑셀 도구를 못 불러와서 CSV로 내려받았어요."); };
 }
 
@@ -768,9 +773,20 @@ function renderSchedule() {
       <div><button class="btn primary" id="btnSchedSave" ${e.locked ? "disabled" : ""}>일정 저장</button></div>
       <div style="color:var(--muted);font-size:12px">신청 화면에도 신청 기간과 경매 일시가 표시돼요.</div>
     </div>
+    ${detail.can_host ? `<div class="card"><h3>선수 사진 지우기 (저장 공간 아끼기)</h3>
+      <div style="color:var(--muted);font-size:13px;line-height:1.6">이 회차 선수들의 사진만 지워요. 명단·결과·엑셀은 그대로이고, 사진 자리에는 디스코드 프로필 사진이나 이름 첫 글자가 나와요. 끝난 회차에 쓰면 좋아요.</div>
+      <div><button class="btn" id="btnPurgePhotos">이 회차 선수 사진 지우기</button></div></div>` : ""}
     ${detail.can_host ? `<div class="card danger"><h3>회차 지우기</h3>
       <div style="color:var(--muted);font-size:13px;line-height:1.6">이 회차의 신청 명단·검수·할 일·경매 결과·채팅·팀장 링크가 모두 지워지고 되돌릴 수 없어요. 진행 기록은 남아요.<br>이 회차의 진행자와 제작자만 지울 수 있어요.</div>
       <div><button class="btn" id="btnDeleteEvent" style="color:#ff8c96;border-color:rgba(255,70,85,.5)">이 회차 지우기</button></div></div>` : ""}`;
+  if ($("btnPurgePhotos")) $("btnPurgePhotos").onclick = async () => {
+    if (!confirm("이 회차 선수 사진을 모두 지울까요? 되돌릴 수 없어요.")) return;
+    const r = await call("purge_photos", { p_id: e.id });
+    if (!r) return;
+    if (!r.ok) return toast(r.reason);
+    toast(r.count ? `사진 ${r.count}장(약 ${Math.round(r.bytes / 1024)}KB)을 지웠어요.` : "지울 사진이 없어요.");
+    ping(); lastSig = ""; refresh();
+  };
   if ($("btnDeleteEvent")) $("btnDeleteEvent").onclick = async () => {
     const name = e.title || "이름 없는 회차";
     const typed = prompt(`정말 지울까요? 확인을 위해 회차 이름을 똑같이 적어 주세요.\n\n${name}`);

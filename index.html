@@ -67,6 +67,7 @@
     <button class="btn" id="btnPause">일시정지</button>
     <button class="btn gold" id="btnHammer">지금 마감</button>
     <button class="btn" id="btnNext">다음 선수</button>
+    <button class="btn" id="btnUndo" title="방금 낙찰·유찰·배정을 취소하고 그 선수를 다시 경매해요">방금 결과 취소</button>
     <label class="chk"><input type="checkbox" id="autoNext"> 다음 선수 자동 시작</label>
     <button class="btn" id="btnReset">처음부터 다시</button>
     <button class="btn" id="btnSound">소리 켜짐</button>
@@ -91,7 +92,7 @@
       <div class="row"><button class="btn big" id="btnSignups2">신청 명단 보기</button><button class="btn" id="btnEdit2">선수 관리 (사진·각오)</button></div>
     </div>
     <div class="result-box" id="resultBox" hidden>
-      <div class="result-head"><h2>경매 <span>결과</span></h2><button class="btn big" id="btnReveal">결과 발표 다시 보기</button><button class="btn gold big" id="btnXlsx">엑셀로 내려받기</button><span class="state-line" id="resultNote"></span></div>
+      <div class="result-head"><h2>경매 <span>결과</span></h2><button class="btn big" id="btnReveal">결과 발표 다시 보기</button><button class="btn gold big" id="btnXlsx">엑셀로 내려받기</button><button class="btn big" id="btnPng">이미지로 저장</button><span class="state-line" id="resultNote"></span></div>
       <div id="resultBody"></div>
     </div>
     <div id="lotLeft">
@@ -346,6 +347,16 @@ $("btnXlsx").addEventListener("click", () => {
   $("resultNote").textContent = kind === "xlsx" ? "엑셀 파일을 내려받았어요." : "엑셀 도구를 못 불러와서 CSV 파일(엑셀에서 열림)로 내려받았어요.";
 });
 $("btnPause").addEventListener("click", () => host("pause"));
+$("btnUndo").addEventListener("click", () => {
+  const r = S && S.last_result, p = r && S.players.find(x => x.id === r.player);
+  if (confirm(`${p ? p.name : "방금 선수"}의 결과를 취소하고 다시 경매할까요? (포인트도 돌려놔요)`)) host("undo");
+});
+$("btnPng").addEventListener("click", async () => {
+  $("btnPng").disabled = true;
+  try { await saveResultImage(S, S.title); $("resultNote").textContent = "결과 이미지를 저장했어요."; }
+  catch (e) { $("resultNote").textContent = "이미지를 만들지 못했어요. 새로고침 뒤 다시 눌러 주세요."; }
+  $("btnPng").disabled = false;
+});
 $("btnHammer").addEventListener("click", () => host("hammer"));
 $("btnNext").addEventListener("click", () => host("next"));
 $("autoNext").addEventListener("change", e => host("auto", e.target.checked));
@@ -682,6 +693,7 @@ function render(prev) {
   $("btnPause").disabled = s.status !== "running";
   $("btnHammer").disabled = !(s.status === "running" || s.status === "paused");
   $("btnNext").disabled = s.status !== "result";
+  $("btnUndo").disabled = !s.can_undo;
   $("autoNext").checked = s.auto_start;
   const filled = s.players.filter(x => x.team !== null).length;
   $("progress").textContent = `자리 ${filled} / ${s.teams.length * c.teamSize}`;
@@ -707,7 +719,7 @@ function render(prev) {
     el.querySelector('[data-k="sum"]').textContent = sum.toFixed(1);
     el.querySelector('[data-k="avg"]').textContent = avg === null ? "-" : avg.toFixed(1);
     const rows = roster.map(r => `<li><span class="who">${avatar(r, 22)}<span>${gradeBadge(r, "sm")}${esc(r.name)} <span style="color:var(--muted)">${playerScore(r).toFixed(1)}</span></span></span>${
-      r.how === "captain" ? `<span class="pr cap">팀장</span>` : r.how === "random" ? `<span class="pr rnd">무작위</span>` : `<span class="pr">${r.price}P</span>`}</li>`);
+      priceTag(r)}</li>`);
     const miss = missingGrades(s, t.idx);
     while (rows.length < c.teamSize) rows.push(`<li class="empty">빈자리${miss.length ? ` <span style="margin-left:6px">${miss.shift()}</span>` : ""}</li>`);
     el.querySelector('[data-k="roster"]').innerHTML = rows.join("");
@@ -730,6 +742,7 @@ function renderTimer() {
 requestAnimationFrame(renderTimer);
 
 mountSoundToggle($("btnSound"));
+keepScreenOn(() => S && !["setup", "done"].includes(S.status));
 boot();
 </script>
 </body>
