@@ -148,7 +148,8 @@ alter table public.auctions add column if not exists undo jsonb;                
 update public.auctions set undo = jsonb_build_array(undo) where jsonb_typeof(undo) = 'object';   -- 예전(하나만) 형식을 목록으로
 alter table public.signups add column if not exists motto text not null default '';       -- 신청할 때 적는 각오 한마디
 alter table public.signups add column if not exists consented_at timestamptz;
-alter table public.staff add column if not exists all_host boolean not null default false;   -- 모든 회차에서 진행 권한 (제작자가 지정)              -- 개인정보 안내에 동의한 시각
+alter table public.staff add column if not exists all_host boolean not null default false;
+alter table public.signups add column if not exists photo text not null default '';          -- 디스코드 사진 대신 본인이 올린 사진 (작게 줄인 이미지)   -- 모든 회차에서 진행 권한 (제작자가 지정)              -- 개인정보 안내에 동의한 시각
 alter table public.signups add column if not exists show_avatar boolean not null default false;  -- 경매·방송 화면에 디스코드 프로필 사진을 써도 되는지 (본인이 고름)             -- 시작 포인트에서 깎는 핸디캡
 alter table public.signups add column if not exists memo       text not null default '';        -- 운영자끼리만 보는 메모
 alter table public.signups add column if not exists updated_at timestamptz;
@@ -732,7 +733,7 @@ begin
                  and (c.x is not null or not (s.id::text in (select jsonb_array_elements_text(coalesce(p_arg -> 'exclude', '[]')))))
                order by c.ord nulls last, s.id loop
         insert into players (auction_id, id, name, peak, current_tier, pos, captain, motto, photo, signup_id, score_override, agents, grade)
-        values (p_id, i, r.nick, r.peak, r.current_tier, r.pos, r.ord is not null, r.motto, '', r.id, r.score_override, r.agents,
+        values (p_id, i, r.nick, r.peak, r.current_tier, r.pos, r.ord is not null, r.motto, r.photo, r.id, r.score_override, r.agents,
                 case when r.ord is null then r.grade end);
         if r.ord is not null then
           v_amt := coalesce((p_arg #>> array['handicaps', r.id::text])::numeric, 0)::int;
@@ -886,7 +887,7 @@ language sql immutable as $$
   select t = any (array[
     '아이언 1','아이언 2','아이언 3','브론즈 1','브론즈 2','브론즈 3','실버 1','실버 2','실버 3',
     '골드 1','골드 2','골드 3','플래티넘 1','플래티넘 2','플래티넘 3','다이아몬드 1','다이아몬드 2','다이아몬드 3',
-    '초월자 1','초월자 2','초월자 3','불멸 1','불멸 2','불멸 3','레디언트'])
+    '초월자 1','초월자 2','초월자 3','불멸 1','불멸 2','불멸 3','레디언트','언랭'])
 $$;
 -- 포지션: 여러 개 고를 수 있음 ("타격대, 척후대"처럼 고른 순서대로 쉼표로 이음). 잘못된 값이면 null
 create or replace function public._norm_pos(t text) returns text
@@ -895,6 +896,11 @@ language sql immutable as $$
               else string_agg(x, ', ' order by o) end
   from (select x, min(o) o from (select trim(x) x, o from unnest(string_to_array(coalesce(t, ''), ',')) with ordinality u(x, o)) a
         where x <> '' group by x) b
+$$;
+-- 올린 사진: 비우거나, 400KB 이하의 jpeg/png/webp 이미지만
+create or replace function public._clean_photo(p text) returns text
+language sql immutable as $$
+  select case when coalesce(p, '') ~ '^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$' and length(p) <= 400000 then p else '' end
 $$;
 create or replace function public._valid_pos(t text) returns boolean
 language sql immutable as $$ select _norm_pos(t) is not null $$;
@@ -913,7 +919,7 @@ create or replace function public._signup_json(s public.signups) returns jsonb
 language sql stable as $$
   select jsonb_build_object('id', s.id, 'discord_name', s.discord_name, 'discord_username', s.discord_username,
     'discord_avatar', s.discord_avatar, 'nick', s.nick, 'peak', s.peak, 'current', s.current_tier, 'pos', s.pos,
-    'agents', to_jsonb(s.agents), 'motto', s.motto, 'show_avatar', s.show_avatar,
+    'agents', to_jsonb(s.agents), 'motto', s.motto, 'show_avatar', s.show_avatar, 'has_photo', s.photo <> '',
     'at', (extract(epoch from s.created_at) * 1000)::bigint)
 $$;
 
@@ -939,15 +945,16 @@ begin
   select id into v_auction from auctions where signup_code = p_code;
   select * into s from signups where auction_id = v_auction and user_id = auth.uid();
   if s.id is null then return null; end if;
-  return _signup_json(s);
+  return _signup_json(s) || jsonb_build_object('photo', s.photo);   -- 본인에게만 사진도 (고치기 미리보기)
 end $$;
 
 -- 신청하기: 디스코드 이름은 브라우저가 보낸 값이 아니라 로그인 정보에서 서버가 직접 꺼냄
 drop function if exists public.submit_signup(text, text, text, text, text);   -- 7단계: 주 요원을 받도록 바뀜
 drop function if exists public.submit_signup(text, text, text, text, text, jsonb);   -- 각오 한마디도 받도록 바뀜
 drop function if exists public.submit_signup(text, text, text, text, text, jsonb, text);   -- 개인정보 동의·프로필 사진 선택을 받도록 바뀜
+drop function if exists public.submit_signup(text, text, text, text, text, jsonb, text, boolean, boolean);   -- 직접 올린 사진도 받도록 바뀜
 create or replace function public.submit_signup(p_code text, p_nick text, p_peak text, p_current text, p_pos text, p_agents jsonb default '[]',
-  p_motto text default '', p_consent boolean default false, p_show_avatar boolean default false) returns jsonb
+  p_motto text default '', p_consent boolean default false, p_show_avatar boolean default false, p_photo text default '') returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   v_uid uuid := auth.uid(); v_auction uuid; v_meta jsonb; v_nick text := left(trim(coalesce(p_nick, '')), 16);
@@ -973,9 +980,10 @@ begin
   v_user := regexp_replace(coalesce(v_meta ->> 'full_name', v_meta ->> 'name', ''), '#0$', '');
   v_name := coalesce(nullif(v_meta #>> '{custom_claims,global_name}', ''), nullif(v_user, ''), '이름 없음');
 
-  insert into signups (auction_id, user_id, discord_id, discord_name, discord_username, discord_avatar, nick, peak, current_tier, pos, agents, motto, consented_at, show_avatar)
+  insert into signups (auction_id, user_id, discord_id, discord_name, discord_username, discord_avatar, nick, peak, current_tier, pos, agents, motto, consented_at, show_avatar, photo)
   values (v_auction, v_uid, coalesce(v_meta ->> 'provider_id', v_meta ->> 'sub', ''), left(v_name, 40), left(v_user, 40),
-          left(coalesce(v_meta ->> 'avatar_url', ''), 300), v_nick, p_peak, p_current, _norm_pos(p_pos), _clean_agents(p_agents), left(trim(coalesce(p_motto, '')), 60), now(), coalesce(p_show_avatar, false))
+          left(coalesce(v_meta ->> 'avatar_url', ''), 300), v_nick, p_peak, p_current, _norm_pos(p_pos), _clean_agents(p_agents), left(trim(coalesce(p_motto, '')), 60), now(), coalesce(p_show_avatar, false),
+          case when coalesce(p_show_avatar, false) then '' else _clean_photo(p_photo) end)
   on conflict (auction_id, user_id) do nothing
   returning * into s;
   if s.id is null then       -- 거의 동시에 두 번 눌렀을 때
@@ -996,12 +1004,12 @@ begin
           from signups s where s.auction_id = p_id);
 end $$;
 
-revoke execute on function public._valid_tier(text), public._valid_pos(text), public._norm_pos(text), public._clean_agents(jsonb), public._signup_json(public.signups)
+revoke execute on function public._valid_tier(text), public._valid_pos(text), public._norm_pos(text), public._clean_photo(text), public._clean_agents(jsonb), public._signup_json(public.signups)
   from public, anon, authenticated;
 revoke execute on function public.signup_info(text), public.my_signup(text),
-  public.submit_signup(text, text, text, text, text, jsonb, text, boolean, boolean), public.get_signups(uuid, text) from public;
+  public.submit_signup(text, text, text, text, text, jsonb, text, boolean, boolean, text), public.get_signups(uuid, text) from public;
 grant execute on function public.signup_info(text), public.my_signup(text),
-  public.submit_signup(text, text, text, text, text, jsonb, text, boolean, boolean), public.get_signups(uuid, text) to anon, authenticated;
+  public.submit_signup(text, text, text, text, text, jsonb, text, boolean, boolean, text), public.get_signups(uuid, text) to anon, authenticated;
 
 -- =====================================================================
 -- 운영자 콘솔 (admin.html) — 디스코드로 로그인한 진행자·운영자만
@@ -1482,7 +1490,9 @@ declare v_n int; v_bytes bigint;
 begin
   if not _can_host(p_id) then return jsonb_build_object('ok', false, 'reason', '이 회차의 진행자나 제작자만 할 수 있어요.'); end if;
   select count(*), coalesce(sum(length(photo)), 0) into v_n, v_bytes from players where auction_id = p_id and photo <> '';
+  v_bytes := v_bytes + (select coalesce(sum(length(photo)), 0) from signups where auction_id = p_id);
   update players set photo = '' where auction_id = p_id and photo <> '';
+  update signups set photo = '' where auction_id = p_id and photo <> '';
   update auctions set players_version = players_version + 1, version = version + 1 where id = p_id;
   perform _slog(p_id, '선수 사진 지움', format('%s장, 약 %sKB', v_n, round(v_bytes / 1024.0)));
   return jsonb_build_object('ok', true, 'count', v_n, 'bytes', v_bytes);
@@ -1507,6 +1517,13 @@ begin
   if p_patch ? 'show_avatar' and (p_patch ->> 'show_avatar')::boolean is distinct from s.show_avatar then
     update signups set show_avatar = (p_patch ->> 'show_avatar')::boolean where id = s.id;
     update auctions set version = version + 1 where id = a.id;
+  end if;
+  if p_patch ? 'photo' or (p_patch ->> 'show_avatar')::boolean then
+    -- 디스코드 사진을 쓰면 올린 사진은 지움. 경매 선수로 올라가 있으면 선수 사진도 같이 바꿈
+    update signups set photo = case when coalesce((p_patch ->> 'show_avatar')::boolean, s.show_avatar) then '' else _clean_photo(p_patch ->> 'photo') end
+     where id = s.id and (p_patch ? 'photo' or (p_patch ->> 'show_avatar')::boolean);
+    update players pl set photo = sg.photo from signups sg where sg.id = s.id and pl.signup_id = s.id and pl.auction_id = a.id;
+    if found then update auctions set players_version = players_version + 1, version = version + 1 where id = a.id; end if;
   end if;
   if v_nick = '' then return jsonb_build_object('ok', false, 'reason', '게임 닉네임을 적어 주세요.'); end if;
   if not _valid_tier(v_peak) or not _valid_tier(v_cur) then return jsonb_build_object('ok', false, 'reason', '티어를 골라 주세요.'); end if;
@@ -1583,7 +1600,7 @@ begin
     'last_auto_ping', (select _ms(last_auto_ping) from site_settings where id = 1),
     'db_bytes', pg_database_size(current_database()),
     'rounds', (select count(*) from auctions), 'signups', (select count(*) from signups),
-    'photo_bytes', (select coalesce(sum(length(photo)), 0) from players));
+    'photo_bytes', (select coalesce(sum(length(photo)), 0) from players) + (select coalesce(sum(length(photo)), 0) from signups));
 end $$;
 -- 자동 깨우기: GitHub Actions가 3일마다 부름 (시각만 기록, 다른 정보는 돌려주지 않음)
 create or replace function public.keepalive() returns jsonb

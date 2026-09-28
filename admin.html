@@ -524,7 +524,7 @@ function renderPeople() {
 }
 
 let editing = null, editAgents = null;
-for (const id of ["ePeak", "eCur"]) $(id).innerHTML = Object.keys(TIER_SCORE).map(t => `<option>${t}</option>`).join("");
+for (const id of ["ePeak", "eCur"]) $(id).innerHTML = TIER_OPTIONS.map(t => `<option>${t}</option>`).join("");
 let editPos = null;
 function openEdit(id) {
   const s = detail.signups.find(x => x.id === id); if (!s) return;
@@ -651,8 +651,8 @@ function renderPrep() {
 
     <div class="card prep-step ${!can ? "locked" : ""}">
       <h3><span class="n">3</span>팀장 링크</h3>
-      ${L ? (st.teams.length ? `<div><button class="btn primary" id="btnCopyAll">팀장 링크 한 번에 복사</button> <span style="color:var(--muted);font-size:12px">“팀 이름: 링크” 줄로 복사돼요.</span></div>
-        ${st.teams.map((t, i) => L.team_keys[i] ? linkRow(t.name, pageLink("team.html", { a: e.id, k: L.team_keys[i] }), t.color) : "").join("")}`
+      ${L ? (st.teams.length ? `<div><button class="btn primary" id="btnCopyAll">팀장 링크 한 번에 복사</button> <span style="color:var(--muted);font-size:12px">“팀장 이름: 링크” 줄로 복사돼요.</span></div>
+        ${st.teams.map((t, i) => L.team_keys[i] ? linkRow(captainLabel(st, t.idx), pageLink("team.html", { a: e.id, k: L.team_keys[i] }), t.color) : "").join("")}`
         : `<div style="color:var(--muted)">1번에서 경매 선수를 채우면 팀장 수만큼 링크가 생겨요.</div>`)
         : `<div style="color:var(--muted)">팀장 링크는 이 회차의 진행자와 제작자만 볼 수 있어요.</div>`}
     </div>
@@ -950,11 +950,21 @@ function renderLinks() {
     html += `<div class="card"><h3>경매 당일 (이 회차 진행자·제작자만 보여요)</h3>${linkRow("진행자 화면", pageLink("index.html", { a: e.id, k: L.host_key }), "var(--accent)")}
       ${L.screen_key ? `${linkRow("방송 화면 (OBS)", pageLink("screen.html", { a: e.id, k: L.screen_key }), "var(--gold)")}<div style="color:var(--muted);font-size:12px">방송 화면은 보기만 되는 링크예요. OBS에서 ‘소스 추가 → 브라우저’에 붙여 넣고 너비 1920, 높이 1080으로 두세요.</div>`
         : `<div style="color:var(--warn);font-size:12px">방송 화면 링크를 만들려면 setup.sql을 한 번 더 실행해 주세요.</div>`}
-      ${L.team_keys.map((k, i) => linkRow(`${i + 1}번 팀장`, pageLink("team.html", { a: e.id, k }), CONFIG.teamColors[i % CONFIG.teamColors.length])).join("")}
-      <div style="color:var(--muted);font-size:12px">팀장 링크의 팀 이름은 경매 화면에서 팀장이 정해지면 바뀌어요.</div></div>`;
+      </div>
+    <div class="card"><h3>팀장 링크 (팀장 ${detail.state.teams.length}명)</h3>
+      ${detail.state.teams.length ? `<div><button class="btn primary" id="btnCopyTeamLinks">팀장 링크 한 번에 복사</button> <span style="color:var(--muted);font-size:12px">“팀장 이름: 링크” 줄로 복사돼요. 각 팀장에게 자기 링크만 보내 주세요.</span></div>
+        <div id="teamLinkRows">${detail.state.teams.map(t => L.team_keys[t.idx] ? linkRow(captainLabel(detail.state, t.idx), pageLink("team.html", { a: e.id, k: L.team_keys[t.idx] }), t.color) : "").join("")}</div>`
+        : `<div style="color:var(--muted);line-height:1.6">‘경매 준비’ 탭에서 팀장(★)을 정하고 <b>이 명단으로 경매 선수 채우기</b>를 누르면 팀장 수만큼 링크가 생겨요.<br>채우기 전에는 어느 링크가 어느 팀인지 정해지지 않아서 보여 주지 않아요.</div>`}</div>`;
   } else html += `<div class="card"><h3>경매 당일</h3><div style="color:var(--muted)">진행자 화면과 팀장 링크는 이 회차의 진행자와 제작자만 볼 수 있어요.</div></div>`;
   $("tabBody").innerHTML = html;
-  $("tabBody").onclick = copyBtn;
+  $("tabBody").onclick = async ev => {
+    if (ev.target.id === "btnCopyTeamLinks") {
+      const text = [...$("teamLinkRows").querySelectorAll(".link-row")].map(r => `${r.querySelector("b").textContent}: ${r.querySelector("input").value}`).join("\n");
+      try { await navigator.clipboard.writeText(text); } catch (err) { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+      ev.target.textContent = "복사됨!"; return setTimeout(() => (ev.target.textContent = "팀장 링크 한 번에 복사"), 1500);
+    }
+    return copyBtn(ev);
+  };
 }
 async function copyBtn(ev) {
   if (!ev.target.matches("[data-copy]")) return;

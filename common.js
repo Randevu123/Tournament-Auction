@@ -35,7 +35,10 @@ const TIER_SCORE = {};
     else for (let i = 1; i <= steps; i++) TIER_SCORE[`${name} ${i}`] = s++;
   }
 })();
-CONFIG.tierScores = { ...TIER_SCORE };   // 새 회차의 기본 점수표 (진행자 화면 '경매 설정'에서 회차마다 바꿀 수 있음)
+CONFIG.tierScores = { ...TIER_SCORE };
+// 언랭(배치 전): 최고 티어가 언랭이면 0점, 현재 티어만 언랭이면 최고 티어 점수만 씀. 점수표에는 넣지 않음
+const UNRANKED = "언랭";
+const TIER_OPTIONS = [UNRANKED, ...Object.keys(TIER_SCORE)];   // 티어 고르는 칸의 목록   // 새 회차의 기본 점수표 (진행자 화면 '경매 설정'에서 회차마다 바꿀 수 있음)
 
 // 지금 보고 있는 경매의 점수표·비율 (진행자·팀장·운영자 화면이 서버에서 받아 넣음)
 let SCORE_CFG = null;
@@ -47,6 +50,8 @@ function tierPoints(tier, cfg = SCORE_CFG) {
 function peakWeight(cfg = SCORE_CFG) { return cfg && cfg.peakWeight != null ? Number(cfg.peakWeight) : 0.5; }
 // 자동 점수 = 최고 티어 점수 × 비율 + 현재 티어 점수 × (1 − 비율), 소수점 첫째 자리까지 (기본 비율 50% = 두 점수의 평균)
 function autoScore(p, cfg = SCORE_CFG) {
+  if (p.peak === UNRANKED) return 0;
+  if (p.current === UNRANKED) return round1(tierPoints(p.peak, cfg));
   const w = peakWeight(cfg);
   return round1(tierPoints(p.peak, cfg) * w + tierPoints(p.current, cfg) * (1 - w));
 }
@@ -56,6 +61,8 @@ function playerScore(p, cfg = SCORE_CFG) {
   return autoScore(p, cfg);
 }
 function scoreFormula(p, cfg = SCORE_CFG) {
+  if (p.peak === UNRANKED) return "최고 티어 언랭 → 0";
+  if (p.current === UNRANKED) return `현재 티어 언랭 → 최고 티어 ${tierPoints(p.peak, cfg)}점만 = ${autoScore(p, cfg).toFixed(1)}`;
   const w = peakWeight(cfg), a = tierPoints(p.peak, cfg), b = tierPoints(p.current, cfg);
   return w === 0.5 ? `(${a} + ${b}) ÷ 2 = ${autoScore(p, cfg).toFixed(1)}` : `${a}×${Math.round(w * 100)}% + ${b}×${Math.round((1 - w) * 100)}% = ${autoScore(p, cfg).toFixed(1)}`;
 }
@@ -140,6 +147,25 @@ function mountAgentPicker(root, selected, onChange) {
 function nameScale(name) {
   const w = [...String(name || "")].reduce((a, ch) => a + (/[\u0000-\u024f]/.test(ch) ? (/[A-Z@MWmw]/.test(ch) ? 0.78 : 0.6) : 1), 0);
   return w <= 7 ? 1 : Math.max(0.42, 7 / w);
+}
+// 사진 파일을 가운데 기준 정사각형으로 잘라 작게 줄임 (신청 화면 등)
+function resizePhotoFile(file, size = CONFIG.photoSize) {
+  return new Promise((resolve, reject) => {
+    if (!file || !/^image\//.test(file.type)) return reject(new Error("image"));
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const side = Math.min(img.width, img.height), c = document.createElement("canvas"); c.width = c.height = size;
+      c.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+      URL.revokeObjectURL(url); resolve(c.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("image")); };
+    img.src = url;
+  });
+}
+// 팀장 링크 이름: "팀장 닉네임" (그 팀의 팀장 선수 이름)
+function captainLabel(state, teamIdx) {
+  const c = state.players.find(p => p.team === teamIdx && p.how === "captain");
+  return `팀장 ${c ? c.name : `${teamIdx + 1}팀`}`;
 }
 function agentsOf(p) { return Array.isArray(p && p.agents) ? p.agents : []; }
 // 주 요원 칩 (없으면 빈 문자열)

@@ -466,7 +466,7 @@ function openEditor() {
   if (P.status !== "setup") return toast("경매 중에는 고칠 수 없어요. ‘처음부터 다시’를 누른 뒤 고쳐 주세요.");
   draft = profiles.map(p => ({ ...p })); buildEditor(); $("editOverlay").classList.add("show");
 }
-const tierOptions = sel => Object.keys(TIER_SCORE).map(t => `<option ${t === sel ? "selected" : ""}>${t}</option>`).join("");
+const tierOptions = sel => TIER_OPTIONS.map(t => `<option ${t === sel ? "selected" : ""}>${t}</option>`).join("");
 function buildEditor() {
   $("edGrid").innerHTML = draft.map((p, i) => `
     <div class="ed ${p.captain ? "captain" : ""}" data-i="${i}">

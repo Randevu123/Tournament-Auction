@@ -151,7 +151,7 @@
   <div class="links">
     <h2>링크</h2>
     <p>팀장 링크는 팀마다 다릅니다. 각 팀장에게 <b>자기 팀 링크만</b> 개인 메시지로 보내 주세요. 링크를 가진 사람은 그 팀으로 입찰할 수 있어요.</p>
-    <div><button class="btn primary" id="btnCopyTeams">팀장 링크 한 번에 복사</button> <span style="color:var(--muted);font-size:13px">“팀 이름: 링크” 형태로 모든 팀장 링크가 복사돼요.</span></div>
+    <div><button class="btn primary" id="btnCopyTeams">팀장 링크 한 번에 복사</button> <span style="color:var(--muted);font-size:13px">“팀장 이름: 링크” 형태로 모든 팀장 링크가 복사돼요.</span></div>
     <div id="linkRows"></div>
     <p style="font-size:13px">방송 화면은 보기만 되는 링크예요. OBS에서 ‘소스 추가 → 브라우저’에 붙여 넣고 너비 1920, 높이 1080으로 두세요.</p>
     <p class="warn">진행자 링크는 이 경매를 조작하는 열쇠입니다. 즐겨찾기에 저장하고 다른 사람에게 보내지 마세요.</p>
@@ -388,7 +388,7 @@ async function openLinks() {
   ((links && links.teams) || []).forEach((k, i) => {
     const t = S && S.teams[i];
     if (S && S.teams.length && !t) return;
-    rows.push(`<div class="link-row" style="--c:${esc(t ? t.color : "")}"><b>${esc(t ? t.name : `${i + 1}팀`)}</b><input readonly value="${esc(pageUrl("team.html", id, k))}"><button class="btn" data-copy>복사</button></div>`);
+    rows.push(`<div class="link-row" style="--c:${esc(t ? t.color : "")}"><b>${esc(t ? captainLabel(S, t.idx) : `팀장 ${i + 1}팀`)}</b><input readonly value="${esc(pageUrl("team.html", id, k))}"><button class="btn" data-copy>복사</button></div>`);
   });
   $("linkRows").innerHTML = rows.join("");
   $("linksOverlay").classList.add("show");
@@ -549,7 +549,7 @@ function openEditor() {
 }
 function closeEditor() { $("editOverlay").classList.remove("show"); }
 function tierOptions(selected) {
-  return Object.keys(TIER_SCORE).map(t => `<option ${t === selected ? "selected" : ""}>${t}</option>`).join("");
+  return TIER_OPTIONS.map(t => `<option ${t === selected ? "selected" : ""}>${t}</option>`).join("");
 }
 function buildEditor() {
   $("edGrid").innerHTML = draft.map((p, i) => `

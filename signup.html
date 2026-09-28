@@ -50,6 +50,13 @@
   .check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; cursor: pointer; }
   .check input { width: 20px; height: 20px; flex: none; margin-top: 1px; accent-color: var(--accent); }
   .check small { color: var(--muted); }
+  .photo-up { display: flex; gap: 14px; align-items: center; background: var(--panel-2); border: 1px dashed var(--line); border-radius: 12px; padding: 12px; }
+  .photo-up .av { border-radius: 14px; }
+  .photo-up-r { display: grid; gap: 6px; min-width: 0; }
+  .photo-up-r small { color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .photo-btns { display: flex; gap: 8px; align-items: center; }
+  .photo-btns .btn { padding: 8px 14px; cursor: pointer; white-space: nowrap; }
+  .photo-btns .link-btn { white-space: nowrap; }
   .privacy { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; font-size: 13px; }
   .privacy summary { cursor: pointer; font-weight: 700; }
   .privacy ul { margin: 10px 0 2px; padding-left: 18px; display: grid; gap: 6px; color: #c9cfdf; line-height: 1.55; }
@@ -128,10 +135,18 @@
             <input id="motto" maxlength="60" autocomplete="off" placeholder="예: 연막 하나는 자신 있어요">
           </div>
           <label class="check"><input type="checkbox" id="showAvatar"> <span>경매·방송 화면의 내 선수 사진으로 <b>디스코드 프로필 사진</b>을 써도 좋아요 <small>(선택, 안 고르면 이름 첫 글자가 나와요)</small></span></label>
+          <div class="photo-up" id="photoBox">
+            <div id="photoPrev"></div>
+            <div class="photo-up-r">
+              <div class="photo-btns"><label class="btn" for="photoFile">내 사진 올리기</label><button type="button" class="link-btn" id="photoClear" hidden>사진 지우기</button></div>
+              <small>선택이에요. 안 올리면 이름 첫 글자가 나와요. 정사각형으로 잘라 작게 줄여서 저장해요.</small>
+              <input type="file" id="photoFile" accept="image/*" hidden>
+            </div>
+          </div>
           <details class="privacy" id="privacyBox">
             <summary>개인정보 안내 (꼭 읽어 주세요)</summary>
             <ul>
-              <li><b>모으는 것</b> 디스코드 표시 이름·아이디(@)·프로필 사진 주소·디스코드 번호, 그리고 여기 적은 게임 닉네임·티어·포지션·주 요원·각오 한마디</li>
+              <li><b>모으는 것</b> 디스코드 표시 이름·아이디(@)·프로필 사진 주소·디스코드 번호, 그리고 여기 적은 게임 닉네임·티어·포지션·주 요원·각오 한마디, 직접 올린 사진(올린 경우)</li>
               <li><b>쓰는 곳</b> 이 내전의 팀 경매 진행 (운영자 명단 확인, 경매 화면, 결과 엑셀)</li>
               <li><b>보는 사람</b> 운영자·진행자는 전부 봐요. 팀장은 경매 화면과 결과(디스코드 이름 포함)를 봐요. 방송 화면에는 게임 닉네임·티어·포지션·주 요원·각오만 나오고, 디스코드 이름은 나오지 않아요. 프로필 사진은 위에서 고른 경우에만 나와요.</li>
               <li><b>이메일</b> 디스코드 로그인 때 로그인 서비스(Supabase)가 이메일을 함께 받아 보관하지만, 이 사이트는 이메일을 읽지도 쓰지도 않아요.</li>
@@ -177,12 +192,28 @@ function fail(msg) { $("errorBox").hidden = false; $("main").hidden = true; $("e
 // 티어 선택 칸 채우기 (첫 줄은 "선택" — 고르지 않으면 신청 불가)
 for (const id of ["peak", "current"]) {
   $(id).innerHTML = `<option value="" selected disabled>선택</option>` +
-    Object.keys(TIER_SCORE).map(t => `<option value="${t}">${t}</option>`).join("");
+    TIER_OPTIONS.map(t => `<option value="${t}">${t}</option>`).join("");
 }
 let posPick = mountPosPicker($("posPick"), "", v => { pos = v; check(); });
 ["nick", "peak", "current", "consent"].forEach(id => $(id).addEventListener("input", check));
 let agentPick = mountAgentPicker($("agentPick"), [], check);
 let editing = false, mine = null;   // editing: 이미 한 신청을 고치는 중
+let photo = "";                      // 디스코드 사진을 안 쓸 때 직접 올린 사진 (작게 줄인 이미지)
+function drawPhoto() {
+  const useDc = $("showAvatar").checked;
+  $("photoBox").hidden = useDc;
+  $("photoPrev").innerHTML = avatar({ name: $("nick").value.trim() || "?", photo }, 72);
+  $("photoClear").hidden = !photo;
+}
+$("showAvatar").addEventListener("change", drawPhoto);
+$("nick").addEventListener("input", () => { if (!photo) drawPhoto(); });
+$("photoFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try { photo = await resizePhotoFile(f); drawPhoto(); } catch (err) { toast("사진을 읽지 못했어요. 다른 사진으로 해 보세요."); }
+});
+$("photoClear").addEventListener("click", () => { photo = ""; drawPhoto(); });
+drawPhoto();
 
 // 빠진 항목이 있으면 신청 버튼을 끄고 무엇이 빠졌는지 알려 줌
 function missing() {
@@ -204,7 +235,7 @@ function check() {
   hint.className = "hint" + (m.length ? " warn" : "");
   hint.textContent = m.length ? `아직 고르지 않은 항목: ${m.join(", ")}` : "모두 채웠어요. 신청하기를 눌러 주세요.";
   const pk = $("peak").value, cu = $("current").value;
-  $("scoreLine").innerHTML = pk && cu ? `티어 점수 <b>${playerScore({ peak: pk, current: cu }).toFixed(1)}</b> (최고 ${TIER_SCORE[pk]}점 + 현재 ${TIER_SCORE[cu]}점) ÷ 2` : "";
+  $("scoreLine").innerHTML = pk && cu ? `티어 점수 <b>${playerScore({ peak: pk, current: cu }).toFixed(1)}</b> (${esc(scoreFormula({ peak: pk, current: cu }))})` : "";
 }
 
 function discordInfo(user) {
@@ -234,7 +265,7 @@ function showDone(s, already) {
   $("doneSub").textContent = already ? "이 디스코드 계정으로는 한 번만 신청할 수 있어요." : "진행자 화면 명단에 올라갔어요.";
   $("doneTable").innerHTML = [
     ["디스코드", `${esc(s.discord_name)}${s.discord_username ? ` <span style="color:var(--muted)">@${esc(s.discord_username)}</span>` : ""}`],
-    ["게임 닉네임", esc(s.nick)], ["최고 티어", esc(s.peak)], ["현재 티어", esc(s.current)], ["포지션", esc(s.pos)], ["주 요원", agentsOf(s).length ? agentChips(s) : "-"], ["각오 한마디", s.motto ? esc(s.motto) : "-"], ["프로필 사진 사용", s.show_avatar ? "사용해요" : "안 써요 (이름 첫 글자)"],
+    ["게임 닉네임", esc(s.nick)], ["최고 티어", esc(s.peak)], ["현재 티어", esc(s.current)], ["포지션", esc(s.pos)], ["주 요원", agentsOf(s).length ? agentChips(s) : "-"], ["각오 한마디", s.motto ? esc(s.motto) : "-"], ["선수 사진", s.show_avatar ? "디스코드 프로필 사진" : s.has_photo ? `${avatar({ name: s.nick, photo }, 40)} 직접 올린 사진` : "없음 (이름 첫 글자)"],
     ["티어 점수", playerScore(s).toFixed(1)],
   ].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
   if (!already) bumpEl($("doneCard"), "pop");
@@ -267,7 +298,7 @@ async function afterLogin() {
   renderLogin();
   if (!session) return;
   const { data } = await sb.rpc("my_signup", { p_code: CODE });
-  if (data) showDone(data, true);
+  if (data) { photo = data.photo || ""; showDone(data, true); }
 }
 
 // 신청 뒤 진행자 화면에 "새 신청" 신호 보내기 (못 보내도 진행자 화면이 몇 초마다 스스로 확인함)
@@ -287,7 +318,8 @@ $("form").addEventListener("submit", async e => {
   $("btnSubmit").textContent = "보내는 중…";
   if (editing) {
     const { data, error } = await sb.rpc("my_signup_update", { p_code: CODE, p_patch: {
-      nick: $("nick").value.trim(), peak: $("peak").value, current: $("current").value, pos, agents: agentPick.get(), motto: $("motto").value.trim(), show_avatar: $("showAvatar").checked } });
+      nick: $("nick").value.trim(), peak: $("peak").value, current: $("current").value, pos, agents: agentPick.get(), motto: $("motto").value.trim(), show_avatar: $("showAvatar").checked,
+      photo: $("showAvatar").checked ? "" : photo } });
     $("btnSubmit").textContent = "고친 내용 저장";
     if (error) { toast("서버에 닿지 못했어요. 잠시 뒤 다시 눌러 주세요."); return check(); }
     if (!data.ok) { toast(data.reason); return check(); }
@@ -295,7 +327,7 @@ $("form").addEventListener("submit", async e => {
     return;
   }
   const { data, error } = await sb.rpc("submit_signup", {
-    p_code: CODE, p_nick: $("nick").value.trim(), p_peak: $("peak").value, p_current: $("current").value, p_pos: pos, p_agents: agentPick.get(), p_motto: $("motto").value.trim(), p_consent: $("consent").checked, p_show_avatar: $("showAvatar").checked,
+    p_code: CODE, p_nick: $("nick").value.trim(), p_peak: $("peak").value, p_current: $("current").value, p_pos: pos, p_agents: agentPick.get(), p_motto: $("motto").value.trim(), p_consent: $("consent").checked, p_show_avatar: $("showAvatar").checked, p_photo: $("showAvatar").checked ? "" : photo,
   });
   $("btnSubmit").textContent = "신청하기";
   if (error) { toast("서버에 닿지 못했어요. 잠시 뒤 다시 눌러 주세요."); return check(); }
@@ -314,7 +346,9 @@ $("btnEditMine").addEventListener("click", () => {
   if (!mine) return;
   editing = true; done = false;
   $("nick").value = mine.nick; $("peak").value = mine.peak; $("current").value = mine.current; $("motto").value = mine.motto || "";
-  $("showAvatar").checked = !!mine.show_avatar; $("consentRow").hidden = true;   // 동의는 처음 신청할 때 이미 받음
+  $("showAvatar").checked = !!mine.show_avatar; $("consentRow").hidden = true;
+  if (mine.photo !== undefined) photo = mine.photo || "";
+  drawPhoto();   // 동의는 처음 신청할 때 이미 받음
   pos = mine.pos; posPick = mountPosPicker($("posPick"), pos, v => { pos = v; check(); });
   agentPick = mountAgentPicker($("agentPick"), agentsOf(mine), check);
   $("formCard").hidden = false; $("doneCard").hidden = true;
@@ -327,7 +361,7 @@ $("btnCancelMine").addEventListener("click", async () => {
   const { data, error } = await sb.rpc("my_signup_cancel", { p_code: CODE });
   if (error) return toast("서버에 닿지 못했어요.");
   if (!data.ok) return toast(data.reason);
-  toast("신청을 취소했어요."); mine = null; done = false; editing = false; $("consentRow").hidden = false;
+  toast("신청을 취소했어요."); mine = null; done = false; editing = false; $("consentRow").hidden = false; photo = ""; drawPhoto();
   $("formCard").hidden = false; $("doneCard").hidden = true; $("form").reset(); pos = "";
   posPick = mountPosPicker($("posPick"), "", v => { pos = v; check(); });
   agentPick = mountAgentPicker($("agentPick"), [], check);
