@@ -565,12 +565,13 @@ function buildEditor() {
           <div><small>현재 티어</small><select data-f="current">${tierOptions(p.current)}</select></div>
         </div>
         <div class="row2">
-          <select data-f="pos">${POSITIONS.map(x => `<option ${x === p.pos ? "selected" : ""}>${x}</option>`).join("")}</select>
+          <div data-posfor="${i}"></div>
           <label class="ed-cap"><input type="checkbox" data-f="captain" ${p.captain ? "checked" : ""}> 팀장</label>
         </div>
         <input data-f="motto" maxlength="${CONFIG.mottoMaxLength}" value="${esc(p.motto || "")}" placeholder="각오 한마디 (${CONFIG.mottoMaxLength}자까지)">
       </div>
     </div>`).join("");
+  $("edGrid").querySelectorAll("[data-posfor]").forEach(el => { const d = draft[el.dataset.posfor]; mountPosPicker(el, d.pos, v => { d.pos = v; }); });   // 포지션 여러 개
   updateCapCount();
 }
 function updateCapCount() {
@@ -622,6 +623,7 @@ $("btnEdDefault").addEventListener("click", () => {
   buildEditor();
 });
 $("btnEdSave").addEventListener("click", async () => {
+  if (draft.some(p => !posList(p.pos).length)) return toast("포지션을 고르지 않은 선수가 있어요.");
   const payload = draft.map(p => ({ ...p, name: p.name.trim(), motto: (p.motto || "").trim() }));
   $("btnEdSave").disabled = true;
   const r = await host("set_players", payload);

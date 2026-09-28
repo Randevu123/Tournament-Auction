@@ -116,6 +116,12 @@
       <label>팀 인원 (팀장 포함)<input type="number" id="cfSize" min="1" max="12" step="1"></label>
       <label>빈자리 1칸당 남길 포인트<input type="number" id="cfReserve" min="0" step="1"></label>
     </div>
+    <h3 class="set-h">시간 (언제든 바꿀 수 있어요, 다음 선수부터 적용)</h3>
+    <div class="set-grid">
+      <label>선수마다 처음 시간(초)<input type="number" id="cfStartSec" min="3" max="120"></label>
+      <label>입찰할 때마다 늘어나는 시간(초)<input type="number" id="cfAddSec" min="1" max="60"></label>
+      <label>최대 시간(초)<input type="number" id="cfMaxSec" min="3" max="120"></label>
+    </div>
     <h3 class="set-h">팀장 핸디캡 (시작 포인트에서 깎기)</h3>
     <div class="set-grid" id="cfHandicaps"></div>
     <h3 class="set-h">티어 점수 계산</h3>
@@ -408,6 +414,7 @@ let cfTiers = {};
 function openSettings() {
   const c = P.config, setup = P.status === "setup";
   $("cfStart").value = c.startPoints; $("cfStep").value = c.bidStep; $("cfSize").value = c.teamSize; $("cfReserve").value = c.reservePerSlot;
+  $("cfStartSec").value = c.startSeconds; $("cfAddSec").value = c.bidAddSeconds; $("cfMaxSec").value = c.maxSeconds;
   ["cfStart", "cfStep", "cfSize", "cfReserve"].forEach(id => ($(id).disabled = !setup));
   $("settingsNote").textContent = setup ? "경매 시작 전이라 모두 바꿀 수 있어요. 이 브라우저에 저장돼요."
     : "경매가 시작돼서 시작 포인트·입찰 단위·팀 인원·핸디캡은 잠겨 있어요. 점수표와 비율은 지금도 바꿀 수 있어요.";
@@ -431,6 +438,10 @@ $("btnSettingsSave").onclick = () => {
   const c = P.config, setup = P.status === "setup";
   for (const t of Object.keys(TIER_SCORE)) if (!(cfTiers[t] >= 0 && cfTiers[t] <= 1000)) return toast(`${t} 점수를 0에서 1000 사이로 적어 주세요.`);
   const next = { ...c, tierScores: { ...cfTiers }, peakWeight: Number($("cfWeight").value) / 100 };
+  const tv = { startSeconds: +$("cfStartSec").value, bidAddSeconds: +$("cfAddSec").value, maxSeconds: +$("cfMaxSec").value };
+  if (!Object.values(tv).every(Number.isInteger) || tv.startSeconds < 3 || tv.maxSeconds > 120 || tv.bidAddSeconds < 1 || tv.bidAddSeconds > 60) return toast("시간은 처음·최대 3~120초, 늘어나는 시간 1~60초로 적어 주세요.");
+  if (tv.startSeconds > tv.maxSeconds) return toast("처음 시간은 최대 시간보다 길 수 없어요.");
+  Object.assign(next, tv);
   if (setup) {
     const v = { startPoints: +$("cfStart").value, bidStep: +$("cfStep").value, teamSize: +$("cfSize").value, reservePerSlot: +$("cfReserve").value };
     if (!Object.values(v).every(Number.isInteger)) return toast("시작 포인트·입찰 단위·팀 인원·빈자리 몫은 정수로 적어 주세요.");
@@ -467,7 +478,7 @@ function buildEditor() {
           <div><small>현재 티어</small><select data-f="current">${tierOptions(p.current)}</select></div>
         </div>
         <div class="row2">
-          <select data-f="pos">${POSITIONS.map(x => `<option ${x === p.pos ? "selected" : ""}>${x}</option>`).join("")}</select>
+          <div data-posfor="${i}"></div>
           <label class="ed-cap"><input type="checkbox" data-f="captain" ${p.captain ? "checked" : ""}> 팀장</label>
         </div>
         <div class="row2">
@@ -481,6 +492,7 @@ function buildEditor() {
         <input data-f="motto" maxlength="${CONFIG.mottoMaxLength}" value="${esc(p.motto || "")}" placeholder="각오 한마디 (${CONFIG.mottoMaxLength}자까지)">
       </div>
     </div>`).join("");
+  $("edGrid").querySelectorAll("[data-posfor]").forEach(el => { const d = draft[el.dataset.posfor]; mountPosPicker(el, d.pos, v => { d.pos = v; }); });   // 포지션 여러 개
   updateCapCount();
 }
 function updateCapCount() {
@@ -541,6 +553,7 @@ $("btnEdSave").onclick = () => {
   const names = draft.map(p => (p.name || "").trim());
   if (names.some(n => !n)) return toast("닉네임이 비어 있는 선수가 있어요.");
   if (new Set(names).size !== names.length) return toast("같은 닉네임이 두 번 있어요.");
+  if (draft.some(p => !posList(p.pos).length)) return toast("포지션을 고르지 않은 선수가 있어요.");
   const caps = draft.filter(p => p.captain).length;
   if (caps < 1 || caps > 8) return toast("팀장은 1명에서 8명 사이로 정해 주세요.");
   const cnt = GRADES.map(g => draft.filter(p => !p.captain && !p.bench && p.grade === g).length);

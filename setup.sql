@@ -147,7 +147,8 @@ alter table public.players add column if not exists grade text check (grade in (
 alter table public.auctions add column if not exists undo jsonb;                         -- 결과 되돌리기용: 결과마다 그 직전 상태 (최근 30개, 쌓임)
 update public.auctions set undo = jsonb_build_array(undo) where jsonb_typeof(undo) = 'object';   -- 예전(하나만) 형식을 목록으로
 alter table public.signups add column if not exists motto text not null default '';       -- 신청할 때 적는 각오 한마디
-alter table public.signups add column if not exists consented_at timestamptz;              -- 개인정보 안내에 동의한 시각
+alter table public.signups add column if not exists consented_at timestamptz;
+alter table public.staff add column if not exists all_host boolean not null default false;   -- 모든 회차에서 진행 권한 (제작자가 지정)              -- 개인정보 안내에 동의한 시각
 alter table public.signups add column if not exists show_avatar boolean not null default false;  -- 경매·방송 화면에 디스코드 프로필 사진을 써도 되는지 (본인이 고름)             -- 시작 포인트에서 깎는 핸디캡
 alter table public.signups add column if not exists memo       text not null default '';        -- 운영자끼리만 보는 메모
 alter table public.signups add column if not exists updated_at timestamptz;
@@ -300,7 +301,7 @@ begin
   delete from teams where auction_id = p_id;
   insert into players (auction_id, id, name, peak, current_tier, pos, captain, motto, photo, signup_id, score_override, agents, grade)
   select p_id, (e.ordinality - 1)::int,
-         left(trim(e.value ->> 'name'), 16), e.value ->> 'peak', e.value ->> 'current', e.value ->> 'pos',
+         left(trim(e.value ->> 'name'), 16), e.value ->> 'peak', e.value ->> 'current', coalesce(_norm_pos(e.value ->> 'pos'), '타격대'),
          coalesce((e.value ->> 'captain')::boolean, false),
          left(coalesce(trim(e.value ->> 'motto'), ''), 60),
          case when coalesce(e.value ->> 'photo', '') like 'data:image/%' and length(e.value ->> 'photo') <= 400000
@@ -751,8 +752,16 @@ begin
 
   -- 경매 설정 바꾸기. 규칙 숫자는 준비 단계에서만, 점수표·비율은 언제든
   elsif p_action = 'set_config' then
-    v_cfg := a.config;
-    if (p_arg ?| array['startPoints', 'bidStep', 'teamSize', 'reservePerSlot']) and a.status <> 'setup' then
+    v_cfg := a.config || jsonb_strip_nulls(jsonb_build_object(
+      'startSeconds', case when p_arg ? 'startSeconds' then (p_arg ->> 'startSeconds')::int end,
+      'bidAddSeconds', case when p_arg ? 'bidAddSeconds' then (p_arg ->> 'bidAddSeconds')::int end,
+      'maxSeconds', case when p_arg ? 'maxSeconds' then (p_arg ->> 'maxSeconds')::int end));
+    if (v_cfg ->> 'startSeconds')::int not between 3 and 120 or (v_cfg ->> 'maxSeconds')::int not between 3 and 120
+       or (v_cfg ->> 'bidAddSeconds')::int not between 1 and 60 then
+      v_reason := '시간은 처음 시간·최대 시간 3~120초, 입찰마다 늘어나는 시간 1~60초로 정해 주세요.';
+    elsif (v_cfg ->> 'startSeconds')::int > (v_cfg ->> 'maxSeconds')::int then
+      v_reason := '처음 시간은 최대 시간보다 길 수 없어요.';
+    elsif (p_arg ?| array['startPoints', 'bidStep', 'teamSize', 'reservePerSlot']) and a.status <> 'setup' then
       v_reason := '시작 포인트·입찰 단위·팀 인원은 경매 시작 전에만 바꿀 수 있어요.';
     elsif p_arg ? 'startPoints' and not ((p_arg ->> 'startPoints')::numeric between 10 and 100000) then v_reason := '시작 포인트는 10에서 100000 사이로 정해 주세요.';
     elsif p_arg ? 'startPoints' and (p_arg ->> 'startPoints')::numeric <= coalesce((select max(handicap) from teams where auction_id = p_id), 0) then
@@ -879,8 +888,16 @@ language sql immutable as $$
     '골드 1','골드 2','골드 3','플래티넘 1','플래티넘 2','플래티넘 3','다이아몬드 1','다이아몬드 2','다이아몬드 3',
     '초월자 1','초월자 2','초월자 3','불멸 1','불멸 2','불멸 3','레디언트'])
 $$;
+-- 포지션: 여러 개 고를 수 있음 ("타격대, 척후대"처럼 고른 순서대로 쉼표로 이음). 잘못된 값이면 null
+create or replace function public._norm_pos(t text) returns text
+language sql immutable as $$
+  select case when count(*) = 0 or bool_or(not (x = any (array['타격대','척후대','감시자','전략가']))) then null
+              else string_agg(x, ', ' order by o) end
+  from (select x, min(o) o from (select trim(x) x, o from unnest(string_to_array(coalesce(t, ''), ',')) with ordinality u(x, o)) a
+        where x <> '' group by x) b
+$$;
 create or replace function public._valid_pos(t text) returns boolean
-language sql immutable as $$ select t = any (array['타격대','척후대','감시자','전략가']) $$;
+language sql immutable as $$ select _norm_pos(t) is not null $$;
 
 -- 주 요원: 이름 목록(jsonb 배열)을 다듬어 최대 3개까지 (빈 값·중복 빼고, 고른 순서 유지)
 create or replace function public._clean_agents(p jsonb) returns text[]
@@ -958,7 +975,7 @@ begin
 
   insert into signups (auction_id, user_id, discord_id, discord_name, discord_username, discord_avatar, nick, peak, current_tier, pos, agents, motto, consented_at, show_avatar)
   values (v_auction, v_uid, coalesce(v_meta ->> 'provider_id', v_meta ->> 'sub', ''), left(v_name, 40), left(v_user, 40),
-          left(coalesce(v_meta ->> 'avatar_url', ''), 300), v_nick, p_peak, p_current, p_pos, _clean_agents(p_agents), left(trim(coalesce(p_motto, '')), 60), now(), coalesce(p_show_avatar, false))
+          left(coalesce(v_meta ->> 'avatar_url', ''), 300), v_nick, p_peak, p_current, _norm_pos(p_pos), _clean_agents(p_agents), left(trim(coalesce(p_motto, '')), 60), now(), coalesce(p_show_avatar, false))
   on conflict (auction_id, user_id) do nothing
   returning * into s;
   if s.id is null then       -- 거의 동시에 두 번 눌렀을 때
@@ -979,7 +996,7 @@ begin
           from signups s where s.auction_id = p_id);
 end $$;
 
-revoke execute on function public._valid_tier(text), public._valid_pos(text), public._clean_agents(jsonb), public._signup_json(public.signups)
+revoke execute on function public._valid_tier(text), public._valid_pos(text), public._norm_pos(text), public._clean_agents(jsonb), public._signup_json(public.signups)
   from public, anon, authenticated;
 revoke execute on function public.signup_info(text), public.my_signup(text),
   public.submit_signup(text, text, text, text, text, jsonb, text, boolean, boolean), public.get_signups(uuid, text) from public;
@@ -1009,6 +1026,13 @@ language sql stable security definer set search_path = public as $$
   select coalesce(_my_role() in ('owner', 'staff'), false)
 $$;
 
+-- 진행 권한이 있는 운영자: 제작자, 모든 회차 진행 권한을 받은 운영자, 또는 어떤 회차의 진행자 → 운영자 초대·승인 가능
+create or replace function public._is_hostlike() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(_my_role() = 'owner' or (_is_staff() and (
+    (select all_host from staff where user_id = auth.uid()) or exists (select 1 from auctions where host_user = auth.uid()))), false)
+$$;
+
 create or replace function public._no() returns jsonb
 language sql immutable as $$ select jsonb_build_object('ok', false, 'reason', '운영자만 할 수 있어요. 디스코드로 로그인했는지 확인해 주세요.') $$;
 
@@ -1036,7 +1060,8 @@ begin
     return jsonb_build_object('logged_in', false, 'owner_exists', exists (select 1 from staff where role = 'owner'));
   end if;
   select * into d from _discord_of(auth.uid());
-  return jsonb_build_object('logged_in', true, 'role', _my_role(), 'user_id', auth.uid(),
+  return jsonb_build_object('logged_in', true, 'role', _my_role(), 'user_id', auth.uid(), 'can_invite', _is_hostlike(),
+    'all_host', coalesce((select all_host from staff where user_id = auth.uid()), false),
     'owner_exists', exists (select 1 from staff where role = 'owner'),
     'name', d.name, 'username', d.username, 'avatar', d.avatar);
 end $$;
@@ -1079,17 +1104,21 @@ language plpgsql stable security definer set search_path = public as $$
 begin
   if not _is_staff() then return null; end if;
   return (select coalesce(jsonb_agg(jsonb_build_object('user_id', user_id, 'role', role, 'name', discord_name,
-            'username', discord_username, 'avatar', discord_avatar, 'at', _ms(created_at))
+            'username', discord_username, 'avatar', discord_avatar, 'at', _ms(created_at), 'all_host', all_host)
             order by case role when 'owner' then 0 when 'staff' then 1 else 2 end, created_at), '[]')
-          from staff where role <> 'pending' or _my_role() = 'owner');
+          from staff where role <> 'pending' or _is_hostlike());
 end $$;
 
--- 진행자만: 승인 / 거절 / 운영자에서 빼기
+-- 승인·거절: 제작자와 진행자 / 운영자에서 빼기: 제작자만
 create or replace function public.staff_decide(p_user uuid, p_action text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare v_name text;
 begin
-  if _my_role() is distinct from 'owner' then return jsonb_build_object('ok', false, 'reason', '제작자만 할 수 있어요.'); end if;
+  if not _is_hostlike() then return jsonb_build_object('ok', false, 'reason', '제작자나 진행자만 할 수 있어요.'); end if;
+  if p_action = 'remove' and _my_role() is distinct from 'owner' then return jsonb_build_object('ok', false, 'reason', '운영자 빼기는 제작자만 할 수 있어요.'); end if;
+  if p_action in ('approve', 'reject') and (select role from staff where user_id = p_user) is distinct from 'pending' then
+    return jsonb_build_object('ok', false, 'reason', '승인을 기다리는 요청이 아니에요.');
+  end if;
   select discord_name into v_name from staff where user_id = p_user;
   if p_action = 'approve' then
     update staff set role = 'staff', approved_at = now() where user_id = p_user and role = 'pending';
@@ -1105,7 +1134,8 @@ end $$;
 create or replace function public.get_invite(p_reset boolean default false) returns jsonb
 language plpgsql security definer set search_path = public as $$
 begin
-  if _my_role() is distinct from 'owner' then return null; end if;
+  if not _is_hostlike() then return null; end if;
+  if p_reset and _my_role() is distinct from 'owner' then return jsonb_build_object('ok', false, 'reason', '초대 링크 바꾸기는 제작자만 할 수 있어요.'); end if;
   if p_reset then
     update site_settings set invite_code = replace(gen_random_uuid()::text, '-', '') where id = 1;
     perform _slog(null, '초대 링크 새로 바꿈', '예전 초대 링크는 더 이상 쓸 수 없음');
@@ -1245,7 +1275,7 @@ begin
     case when v_nick <> s.nick then format('닉네임 %s → %s', s.nick, v_nick) end,
     case when v_peak <> s.peak then format('최고 티어 %s → %s', s.peak, v_peak) end,
     case when v_cur <> s.current_tier then format('현재 티어 %s → %s', s.current_tier, v_cur) end,
-    case when p_patch ? 'pos' and p_patch ->> 'pos' <> s.pos then format('포지션 %s → %s', s.pos, p_patch ->> 'pos') end,
+    case when p_patch ? 'pos' and _norm_pos(p_patch ->> 'pos') <> s.pos then format('포지션 %s → %s', s.pos, _norm_pos(p_patch ->> 'pos')) end,
     case when p_patch ? 'motto' and left(trim(coalesce(p_patch ->> 'motto', '')), 60) <> s.motto then format('각오 "%s" → "%s"', s.motto, left(trim(coalesce(p_patch ->> 'motto', '')), 60)) end,
     case when p_patch ? 'agents' and _clean_agents(p_patch -> 'agents') <> s.agents
          then format('주 요원 %s → %s', coalesce(nullif(array_to_string(s.agents, ', '), ''), '없음'), coalesce(nullif(array_to_string(_clean_agents(p_patch -> 'agents'), ', '), ''), '없음')) end,
@@ -1259,7 +1289,7 @@ begin
   update signups set
     nick         = case when p_patch ? 'nick' then left(trim(p_patch ->> 'nick'), 16) else nick end,
     peak         = v_peak, current_tier = v_cur,
-    pos          = coalesce(p_patch ->> 'pos', pos),
+    pos          = coalesce(_norm_pos(p_patch ->> 'pos'), pos),
     agents       = case when p_patch ? 'agents' then _clean_agents(p_patch -> 'agents') else agents end,
     motto        = case when p_patch ? 'motto' then left(trim(coalesce(p_patch ->> 'motto', '')), 60) else motto end,
     memo         = case when p_patch ? 'memo' then left(coalesce(p_patch ->> 'memo', ''), 200) else memo end,
@@ -1269,7 +1299,7 @@ begin
   where id = s.id;
   -- 이미 경매에 올라간 선수면 경매 화면에도 같이 반영 (닉네임·티어·포지션·점수)
   update players set name = case when p_patch ? 'nick' then v_nick else name end,
-         peak = v_peak, current_tier = v_cur, pos = coalesce(p_patch ->> 'pos', pos), score_override = v_score,
+         peak = v_peak, current_tier = v_cur, pos = coalesce(_norm_pos(p_patch ->> 'pos'), pos), score_override = v_score,
          agents = case when p_patch ? 'agents' then _clean_agents(p_patch -> 'agents') else agents end,
          motto = case when p_patch ? 'motto' then left(trim(coalesce(p_patch ->> 'motto', '')), 60) else motto end
    where signup_id = s.id and auction_id = s.auction_id;
@@ -1369,7 +1399,8 @@ end $$;
 -- 이 회차의 경매 준비를 할 수 있는 사람: 그 회차의 진행자, 또는 제작자
 create or replace function public._can_host(p_id uuid) returns boolean
 language sql stable security definer set search_path = public as $$
-  select coalesce(_my_role() = 'owner' or (_is_staff() and (select host_user from auctions where id = p_id) = auth.uid()), false)
+  select coalesce(_my_role() = 'owner' or (_is_staff() and (
+    (select host_user from auctions where id = p_id) = auth.uid() or (select all_host from staff where user_id = auth.uid()))), false)
 $$;
 
 -- 진행자 넘기기 (지금 진행자 또는 제작자가, 다른 운영자에게)
@@ -1470,7 +1501,7 @@ begin
   if s.id is null then return jsonb_build_object('ok', false, 'reason', '신청 내역이 없어요.'); end if;
   if _locked(a) or not _signup_open(a) then return jsonb_build_object('ok', false, 'reason', '신청 기간이 끝나서 고칠 수 없어요. 운영자에게 말해 주세요.'); end if;
   v_nick := left(trim(coalesce(p_patch ->> 'nick', s.nick)), 16);
-  v_peak := coalesce(p_patch ->> 'peak', s.peak); v_cur := coalesce(p_patch ->> 'current', s.current_tier); v_pos := coalesce(p_patch ->> 'pos', s.pos);
+  v_peak := coalesce(p_patch ->> 'peak', s.peak); v_cur := coalesce(p_patch ->> 'current', s.current_tier); v_pos := case when p_patch ? 'pos' then coalesce(_norm_pos(p_patch ->> 'pos'), '') else s.pos end;
   v_agents := case when p_patch ? 'agents' then _clean_agents(p_patch -> 'agents') else s.agents end;
   v_motto := case when p_patch ? 'motto' then left(trim(coalesce(p_patch ->> 'motto', '')), 60) else s.motto end;
   if p_patch ? 'show_avatar' and (p_patch ->> 'show_avatar')::boolean is distinct from s.show_avatar then
@@ -1519,7 +1550,21 @@ end $$;
 revoke execute on function public.my_signup_update(text, jsonb), public.my_signup_cancel(text) from public;
 grant execute on function public.my_signup_update(text, jsonb), public.my_signup_cancel(text) to anon, authenticated;
 
-revoke execute on function public._can_host(uuid) from public, anon, authenticated;
+revoke execute on function public._can_host(uuid), public._is_hostlike() from public, anon, authenticated;
+
+-- 모든 회차 진행 권한 주기/빼기 (제작자만)
+create or replace function public.set_all_host(p_user uuid, p_on boolean) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_name text;
+begin
+  if _my_role() is distinct from 'owner' then return jsonb_build_object('ok', false, 'reason', '제작자만 할 수 있어요.'); end if;
+  update staff set all_host = coalesce(p_on, false) where user_id = p_user and role = 'staff' returning discord_name into v_name;
+  if v_name is null then return jsonb_build_object('ok', false, 'reason', '승인된 운영자만 지정할 수 있어요.'); end if;
+  perform _slog(null, case when p_on then '모든 회차 진행 권한 줌' else '모든 회차 진행 권한 뺌' end, v_name);
+  return jsonb_build_object('ok', true);
+end $$;
+revoke execute on function public.set_all_host(uuid, boolean) from public;
+grant execute on function public.set_all_host(uuid, boolean) to anon, authenticated;
 revoke execute on function public.set_event_host(uuid, uuid), public.console_host_action(uuid, text, jsonb) from public;
 grant execute on function public.set_event_host(uuid, uuid), public.console_host_action(uuid, text, jsonb) to anon, authenticated;
 

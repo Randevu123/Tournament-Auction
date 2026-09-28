@@ -19,6 +19,7 @@
   .role { font-size: 11px; font-weight: 900; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
   .role.owner { color: var(--gold); border-color: var(--gold); }
   .role.staff { color: var(--ok); border-color: var(--ok); }
+  .role.all { color: #ff8c96; border-color: var(--accent); }
   .link-btn { background: none; border: 0; color: var(--muted); text-decoration: underline; font-size: 13px; padding: 4px; }
 
   .gate { max-width: 520px; margin: 60px auto; padding: 0 16px; }
@@ -180,7 +181,7 @@
   <div class="form-grid">
     <div class="field"><label>최고 티어</label><select id="ePeak"></select></div>
     <div class="field"><label>현재 티어</label><select id="eCur"></select></div>
-    <div class="field"><label>포지션</label><select id="ePos"></select></div>
+    <div class="field" style="grid-column:1/-1"><label>포지션 (여러 개 가능)</label><div id="ePos"></div></div>
     <div class="field"><label>점수 직접 입력 (비우면 자동)</label><input id="eScore" type="number" step="0.1" min="0" max="1000" placeholder="자동"></div>
   </div>
   <div class="calc" id="eCalc"></div>
@@ -350,7 +351,7 @@ $("svc").onclick = () => { view = "staff"; lastSig = ""; render(); refresh(); };
 /* ---------- 콘솔 ---------- */
 async function startConsole() {
   $("gate").hidden = true; $("console").hidden = false;
-  $("btnStaff").textContent = me.role === "owner" ? "운영자 관리 · 초대" : "운영자 명단";
+  $("btnStaff").textContent = me.role === "owner" || me.can_invite ? "운영자 관리 · 초대" : "운영자 명단";
   try { selected = localStorage.getItem("valo-console-event"); } catch (e) { /* 무시 */ }
   channel = sb.channel("staff-console", { config: { broadcast: { self: false } } })
     .on("broadcast", { event: "changed" }, () => refresh()).subscribe();
@@ -524,12 +525,12 @@ function renderPeople() {
 
 let editing = null, editAgents = null;
 for (const id of ["ePeak", "eCur"]) $(id).innerHTML = Object.keys(TIER_SCORE).map(t => `<option>${t}</option>`).join("");
-$("ePos").innerHTML = POSITIONS.map(p => `<option>${p}</option>`).join("");
+let editPos = null;
 function openEdit(id) {
   const s = detail.signups.find(x => x.id === id); if (!s) return;
   editing = s;
   $("editWho").innerHTML = `${discordImg(s.discord_avatar, s.discord_name, 26)}<div><b>${esc(s.discord_name)}</b>${s.discord_username ? `<small>@${esc(s.discord_username)}</small>` : ""}</div>`;
-  $("eNick").value = s.nick; $("ePeak").value = s.peak; $("eCur").value = s.current; $("ePos").value = s.pos; $("eMemo").value = s.memo || "";
+  $("eNick").value = s.nick; $("ePeak").value = s.peak; $("eCur").value = s.current; editPos = mountPosPicker($("ePos"), s.pos); $("eMemo").value = s.memo || "";
   $("eScore").value = s.score != null ? s.score : "";
   editAgents = mountAgentPicker($("eAgents"), agentsOf(s));
   $("eMotto").value = s.motto || "";
@@ -544,7 +545,8 @@ function updateEditCalc() {
 $("btnEditSave").onclick = async () => {
   const sc = $("eScore").value.trim();
   if (sc !== "" && !(Number(sc) >= 0 && Number(sc) <= 1000)) return toast("점수는 0에서 1000 사이로 적어 주세요.");
-  const r = await mutate("signup_update", { p_signup: editing.id, p_patch: { nick: $("eNick").value, peak: $("ePeak").value, current: $("eCur").value, pos: $("ePos").value, agents: editAgents.get(), motto: $("eMotto").value, memo: $("eMemo").value, score: sc === "" ? null : Number(sc) } });
+  if (!editPos.get()) return toast("포지션을 하나 이상 골라 주세요.");
+  const r = await mutate("signup_update", { p_signup: editing.id, p_patch: { nick: $("eNick").value, peak: $("ePeak").value, current: $("eCur").value, pos: editPos.get(), agents: editAgents.get(), motto: $("eMotto").value, memo: $("eMemo").value, score: sc === "" ? null : Number(sc) } });
   if (r && r.ok) $("editModal").classList.remove("show");
 };
 
@@ -573,6 +575,7 @@ function renderPrep() {
   if (!d.grades) d.grades = {};
   sigs.forEach(x => { if (!(x.id in d.grades)) d.grades[x.id] = x.grade || ""; });
   if (!d.settings) d.settings = { startPoints: cfg.startPoints, bidStep: cfg.bidStep, teamSize: cfg.teamSize, reservePerSlot: cfg.reservePerSlot,
+    startSeconds: cfg.startSeconds, bidAddSeconds: cfg.bidAddSeconds, maxSeconds: cfg.maxSeconds,
     peakWeight: peakWeight(cfg), tierScores: { ...TIER_SCORE, ...(cfg.tierScores || {}) }, handicaps: Object.fromEntries(st.teams.map(t => [t.idx, t.handicap || 0])) };
   if (!setup || !d.order) d.order = [...st.queue];
   else d.order = d.order.filter(id => st.queue.includes(id)).concat(st.queue.filter(id => !d.order.includes(id)));   // 명단이 바뀌면 맞춤
@@ -634,11 +637,16 @@ function renderPrep() {
         <label>팀 인원 (팀장 포함)<input type="number" data-set="teamSize" value="${S.teamSize}" ${dis}></label>
         <label>빈자리 1칸당 남길 포인트<input type="number" data-set="reservePerSlot" value="${S.reservePerSlot}" ${dis}></label>
       </div>
+      <div class="set-grid">
+        <label>선수마다 처음 시간(초)<input type="number" min="3" max="120" data-set="startSeconds" value="${S.startSeconds}" ${can && !e.locked ? "" : "disabled"}></label>
+        <label>입찰할 때마다 늘어나는 시간(초)<input type="number" min="1" max="60" data-set="bidAddSeconds" value="${S.bidAddSeconds}" ${can && !e.locked ? "" : "disabled"}></label>
+        <label>최대 시간(초)<input type="number" min="3" max="120" data-set="maxSeconds" value="${S.maxSeconds}" ${can && !e.locked ? "" : "disabled"}></label>
+      </div>
       ${st.teams.length ? `<div class="set-grid">${st.teams.map(t => `<label style="color:${esc(t.color)}">${esc(t.name)} 핸디캡<input type="number" data-thc="${t.idx}" value="${S.handicaps[t.idx] ?? t.handicap}" ${dis}></label>`).join("")}</div>` : ""}
       <div class="weight"><label>최고 티어 비율 <b id="wLabel"></b><input type="range" id="wRange" min="0" max="100" step="5" value="${Math.round(S.peakWeight * 100)}" ${can && !e.locked ? "" : "disabled"}></label><div class="calc" id="wEx"></div></div>
       <div class="tier-grid">${Object.keys(TIER_SCORE).map(t => `<label>${t}<input type="number" step="0.5" min="0" max="1000" data-tier="${t}" value="${S.tierScores[t]}" ${can && !e.locked ? "" : "disabled"}></label>`).join("")}</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="btnTierDef" ${can && !e.locked ? "" : "disabled"}>기본 점수표로</button><button class="btn primary" id="btnSetSave" ${can && !e.locked ? "" : "disabled"}>설정 저장</button>
-        <span style="color:var(--muted);font-size:12px">시작 포인트·입찰 단위·팀 인원·핸디캡은 경매 시작 전에만, 점수표·비율은 언제든 바꿀 수 있어요.</span></div>
+        <span style="color:var(--muted);font-size:12px">시작 포인트·입찰 단위·팀 인원·핸디캡은 경매 시작 전에만, 시간·점수표·비율은 언제든 바꿀 수 있어요(시간은 다음 선수부터 적용).</span></div>
     </div>
 
     <div class="card prep-step ${!can ? "locked" : ""}">
@@ -723,6 +731,8 @@ function renderPrep() {
   async function saveSettings() {
     const arg = { tierScores: {}, peakWeight: S.peakWeight };
     for (const t of Object.keys(TIER_SCORE)) { const v = Number(S.tierScores[t]); if (!(v >= 0 && v <= 1000)) return toast(`${t} 점수를 0에서 1000 사이로 적어 주세요.`); arg.tierScores[t] = v; }
+    for (const k of ["startSeconds", "bidAddSeconds", "maxSeconds"]) { if (!Number.isInteger(S[k])) return toast("시간은 초 단위 정수로 적어 주세요."); arg[k] = S[k]; }
+    if (S.startSeconds > S.maxSeconds) return toast("처음 시간은 최대 시간보다 길 수 없어요.");
     if (setup) for (const k of ["startPoints", "bidStep", "teamSize", "reservePerSlot"]) { if (!Number.isInteger(S[k])) return toast("시작 포인트·입찰 단위·팀 인원·빈자리 몫은 정수로 적어 주세요."); arg[k] = S[k]; }
     const r = await hostAct("set_config", arg);
     if (!r || !r.ok) return;
@@ -958,27 +968,33 @@ let staffRenderSeq = 0;
 async function renderStaff() {
   const seq = ++staffRenderSeq;
   let invite = "";
-  if (me.role === "owner") { const r = await call("get_invite", { p_reset: false }); if (r) invite = pageLink("admin.html", { invite: r.code }); }
+  const canInvite = me.role === "owner" || me.can_invite;   // 제작자와 진행자(모든 회차 진행 권한 포함)는 초대·승인
+  if (canInvite) { const r = await call("get_invite", { p_reset: false }); if (r && r.code) invite = pageLink("admin.html", { invite: r.code }); }
   if (seq !== staffRenderSeq || view !== "staff") return;     // 더 새로 그린 화면이 있으면 옛 화면은 버림
   const owner = me.role === "owner";
   const pending = members.filter(m => m.role === "pending"), active = members.filter(m => m.role !== "pending");
   const person = (m, btns) => `<li>${discordImg(m.avatar, m.name, 34)}<div class="grow"><b>${esc(m.name)}</b> ${m.username ? `<span style="color:var(--muted);font-size:12px">@${esc(m.username)}</span>` : ""}</div>${btns}</li>`;
   $("view").innerHTML = `
-    <div class="ev-head"><h2>운영자 ${owner ? "관리" : "명단"}</h2></div>
+    <div class="ev-head"><h2>운영자 ${canInvite ? "관리" : "명단"}</h2></div>
     <div class="card"><h3>서비스 상태 (Supabase 무료 요금제)</h3><div id="svcCard" style="display:grid;gap:10px">${svcCardHtml()}</div></div>
-    ${owner ? `<div class="card"><h3>운영자 초대 링크</h3>
+    ${canInvite ? `<div class="card"><h3>운영자 초대 링크</h3>
       ${linkRow("초대 링크", invite, "var(--ok)")}
       <div style="color:var(--muted);font-size:13px;line-height:1.6">운영자에게 이 링크를 보내면, 디스코드로 로그인해 요청을 보내요. 아래에서 승인해야 들어올 수 있어요.<br>링크가 새어 나갔다면 새 링크로 바꾸세요. 예전 링크는 바로 쓸 수 없게 돼요.</div>
-      <div><button class="btn" id="btnInviteReset">새 링크로 바꾸기</button></div></div>
+      ${owner ? `<div><button class="btn" id="btnInviteReset">새 링크로 바꾸기</button></div>` : `<div style="color:var(--muted);font-size:12px">링크 바꾸기와 운영자 빼기는 제작자만 할 수 있어요.</div>`}</div>
     <div class="card"><h3>승인 기다리는 사람 ${pending.length}명</h3>
       <ul class="people">${pending.length ? pending.map(m => person(m, `<button class="btn primary" data-dec="approve" data-u="${m.user_id}">승인</button><button class="btn" data-dec="reject" data-u="${m.user_id}">거절</button>`)).join("") : `<li style="color:var(--muted)">없어요.</li>`}</ul></div>` : ""}
     <div class="card"><h3>운영자 ${active.length}명</h3>
-      <ul class="people">${active.map(m => person(m, m.role === "owner" ? `<span class="role owner">제작자</span>` : owner ? `<span class="role staff">운영자</span><button class="btn" data-dec="remove" data-u="${m.user_id}">빼기</button>` : `<span class="role staff">운영자</span>`)).join("")}</ul></div>
+      <ul class="people">${active.map(m => person(m, m.role === "owner" ? `<span class="role owner">제작자</span>`
+        : `${m.all_host ? `<span class="role all">모든 회차 진행</span>` : ""}<span class="role staff">운영자</span>${owner
+          ? `<button class="btn" data-allhost="${m.all_host ? 0 : 1}" data-u="${m.user_id}">${m.all_host ? "모든 회차 진행 권한 빼기" : "모든 회차 진행 권한 주기"}</button><button class="btn" data-dec="remove" data-u="${m.user_id}">빼기</button>` : ""}`)).join("")}</ul>
+      ${owner ? `<div style="color:var(--muted);font-size:12px;line-height:1.6">‘모든 회차 진행 권한’을 받은 운영자는 제작자처럼 모든 회차의 경매 준비·진행자 화면·팀장 링크·회차 지우기를 할 수 있고, 운영자 초대·승인도 할 수 있어요.</div>` : ""}</div>
     <div class="card"><h3>전체 진행 기록 (모든 회차 + 운영자 승인 등)</h3>${logToolbar()}<ul class="log-list" id="siteLog">${logItems(logs, true, "site")}</ul></div>`;
   bindLogSearch(() => { $("siteLog").innerHTML = logItems(logs, true, "site"); });
   $("btnLogCsv").onclick = () => downloadLogCsv("site");
   $("view").onclick = async ev => {
     if (ev.target.matches("[data-copy]")) return copyBtn(ev);
+    const ah = ev.target.closest("[data-allhost]");
+    if (ah) { await mutate("set_all_host", { p_user: ah.dataset.u, p_on: ah.dataset.allhost === "1" }); return renderStaff(); }
     const b = ev.target.closest("[data-dec]");
     if (b) {
       if (b.dataset.dec === "remove" && !confirm("이 사람을 운영자에서 뺄까요?")) return;

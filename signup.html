@@ -116,7 +116,7 @@
             </div>
           </div>
           <div class="field">
-            <label>포지션<span class="req">*</span></label>
+            <label>포지션 <span style="color:var(--muted);font-weight:400">(여러 개 고를 수 있어요, 잘하는 순서대로)</span><span class="req">*</span></label>
             <div class="pos-pick" id="posPick"></div>
           </div>
           <div class="field">
@@ -179,13 +179,7 @@ for (const id of ["peak", "current"]) {
   $(id).innerHTML = `<option value="" selected disabled>선택</option>` +
     Object.keys(TIER_SCORE).map(t => `<option value="${t}">${t}</option>`).join("");
 }
-$("posPick").innerHTML = POSITIONS.map(p => `<button type="button" data-pos="${p}">${p}</button>`).join("");
-$("posPick").addEventListener("click", e => {
-  const b = e.target.closest("[data-pos]"); if (!b) return;
-  pos = b.dataset.pos;
-  document.querySelectorAll("#posPick button").forEach(x => x.classList.toggle("on", x === b));
-  check();
-});
+let posPick = mountPosPicker($("posPick"), "", v => { pos = v; check(); });
 ["nick", "peak", "current", "consent"].forEach(id => $(id).addEventListener("input", check));
 let agentPick = mountAgentPicker($("agentPick"), [], check);
 let editing = false, mine = null;   // editing: 이미 한 신청을 고치는 중
@@ -321,7 +315,7 @@ $("btnEditMine").addEventListener("click", () => {
   editing = true; done = false;
   $("nick").value = mine.nick; $("peak").value = mine.peak; $("current").value = mine.current; $("motto").value = mine.motto || "";
   $("showAvatar").checked = !!mine.show_avatar; $("consentRow").hidden = true;   // 동의는 처음 신청할 때 이미 받음
-  pos = mine.pos; document.querySelectorAll("#posPick button").forEach(x => x.classList.toggle("on", x.dataset.pos === pos));
+  pos = mine.pos; posPick = mountPosPicker($("posPick"), pos, v => { pos = v; check(); });
   agentPick = mountAgentPicker($("agentPick"), agentsOf(mine), check);
   $("formCard").hidden = false; $("doneCard").hidden = true;
   $("btnSubmit").textContent = "고친 내용 저장";
@@ -335,7 +329,7 @@ $("btnCancelMine").addEventListener("click", async () => {
   if (!data.ok) return toast(data.reason);
   toast("신청을 취소했어요."); mine = null; done = false; editing = false; $("consentRow").hidden = false;
   $("formCard").hidden = false; $("doneCard").hidden = true; $("form").reset(); pos = "";
-  document.querySelectorAll("#posPick button").forEach(x => x.classList.remove("on"));
+  posPick = mountPosPicker($("posPick"), "", v => { pos = v; check(); });
   agentPick = mountAgentPicker($("agentPick"), [], check);
   renderLogin(); pingHost(); refreshCount();
 });

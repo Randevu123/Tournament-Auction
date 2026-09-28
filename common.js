@@ -13,7 +13,7 @@ const CONFIG = {
   reservePerSlot: 5,     // 빈자리 1칸당 남겨 둬야 하는 최소 포인트
   startSeconds: 15,      // 선수 한 명당 처음 주어지는 시간(초)
   bidAddSeconds: 5,      // 입찰할 때마다 늘어나는 시간(초)
-  maxSeconds: 30,        // 남은 시간 최대치(초)
+  maxSeconds: 15,        // 남은 시간 최대치(초) — 경매 설정에서 바꿀 수 있음
   maxUnsold: 2,          // 이 횟수만큼 유찰되면 빈자리 팀에 무작위 배정
   resultShowMs: 2200,    // 낙찰/유찰 화면을 보여 주는 시간(밀리초)
   peakWeight: 0.5,       // 티어 점수에서 최고 티어가 차지하는 비율 (0.5 = 최고·현재 반반)
@@ -68,6 +68,24 @@ function round1(n) { return Math.round(n * 10) / 10; }
 
 /* [3] 가짜 선수 25명 (팀장 5명 + 경매 선수 20명) */
 const POSITIONS = ["타격대", "척후대", "감시자", "전략가"];
+// 포지션 여러 개 고르기: 누른 순서대로 "타격대, 척후대"처럼 저장 (신청·콘솔·선수 관리·연습판이 함께 씀)
+function posList(v) { return String(v || "").split(",").map(x => x.trim()).filter(x => POSITIONS.includes(x)); }
+function mountPosPicker(root, value, onChange) {
+  const picked = posList(value);
+  function draw() {
+    root.classList.add("pos-multi");
+    root.innerHTML = POSITIONS.map(p => { const i = picked.indexOf(p);
+      return `<button type="button" data-pos="${p}" class="${i >= 0 ? "on" : ""}">${i >= 0 && picked.length > 1 ? `<span class="no">${i + 1}</span>` : ""}${p}</button>`; }).join("");
+  }
+  root.onclick = e => {
+    const b = e.target.closest("[data-pos]"); if (!b) return;
+    const i = picked.indexOf(b.dataset.pos);
+    if (i >= 0) picked.splice(i, 1); else picked.push(b.dataset.pos);
+    draw(); onChange && onChange(picked.join(", "));
+  };
+  draw();
+  return { get: () => picked.join(", ") };
+}
 // 주 요원 고르기 목록 (2026년 9월 기준 29명). 새 요원이 나오면 알맞은 역할 줄에 이름만 더하면 됨
 const AGENTS = {
   "타격대": ["제트", "레이즈", "레이나", "피닉스", "요루", "네온", "아이소", "웨이레이"],
