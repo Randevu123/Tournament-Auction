@@ -479,14 +479,14 @@ function isConfigured() {
    - 조작(입찰, 시작 등)은 서버 함수로 보내고, 서버가 순서대로 하나씩 처리합니다.
    - 처리 뒤 "바뀌었어요" 신호를 실시간 채널로 보내면, 다른 화면이 새 상태를 받아 옵니다.
    - 신호를 놓쳐도 4초마다 한 번씩 스스로 확인하므로, 새로고침·끊김 뒤에도 따라잡습니다. */
-function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresence, onConn, chat = true, onEvent = {} }) {
+function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onChatUpdate, onPresence, onConn, chat = true, onEvent = {} }) {
   const cfg = window.AUCTION_CONFIG;
   const sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   let state = null, version = 0, offset = 0, bestRtt = Infinity, chStatus = "", failed = false;
   let photos = {}, photosVersion = -1, photosLoading = false;
-  const seenChat = new Set(); let maxChat = 0;
+  const seenChat = new Map(); let maxChat = 0;   // 메시지 번호 → 받은 메시지
 
   async function rpc(fn, args) {
     const { data, error } = await sb.rpc(fn, args);
@@ -549,8 +549,12 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresen
 
   function addChat(list) {
     const fresh = (list || []).filter(m => m && !seenChat.has(m.id));
+    // 이미 받은 메시지의 숨김 여부가 바뀜 (진행자가 방송에서 숨기거나 다시 보이게 함)
+    // (방송 화면에는 숨긴 메시지의 내용이 비어서 오므로, 이미 아는 내용은 그대로 둠)
+    (list || []).filter(m => m && seenChat.has(m.id) && !!seenChat.get(m.id).hidden !== !!m.hidden)
+      .forEach(m => { const k = seenChat.get(m.id), u = { ...k, ...m, body: m.body || k.body }; seenChat.set(m.id, u); onChatUpdate && onChatUpdate(u); });
     if (!fresh.length) return;
-    fresh.forEach(m => { seenChat.add(m.id); maxChat = Math.max(maxChat, m.id); });
+    fresh.forEach(m => { seenChat.set(m.id, m); maxChat = Math.max(maxChat, m.id); });
     onChat(fresh.sort((a, b) => a.id - b.id));
   }
   async function refreshChat() {
@@ -563,6 +567,15 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresen
     if (!r.ok) { toast(r.reason); return false; }
     addChat([r.msg]);
     channel.send({ type: "broadcast", event: "chat", payload: r.msg });
+    return true;
+  }
+  async function hideChat(msgId, hidden) {
+    const r = await act("hide_chat", { p_msg: msgId, p_hidden: hidden });
+    if (!r) return false;
+    if (!r.ok) { toast(r.reason); return false; }
+    addChat([r.msg]);
+    // 방송 화면에는 숨긴 메시지의 내용을 보내지 않음
+    channel.send({ type: "broadcast", event: "chat", payload: r.msg.hidden ? { ...r.msg, body: "" } : r.msg });
     return true;
   }
 
@@ -597,7 +610,7 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresen
 
   refresh(); refreshChat();
   return {
-    sb, act, sendChat, refresh,
+    sb, act, sendChat, hideChat, refresh,
     // 화면 연출 신호 (예: 순서 추첨) — 방송 화면이 받아서 같은 연출을 보여 줌
     show: payload => channel.send({ type: "broadcast", event: "show", payload }),
     rpc: (fn, args = {}) => rpc(fn, { p_id: id, p_key: key, ...args }),
@@ -616,7 +629,7 @@ function timeLeftMs(state, serverNow) {
 }
 
 /* [7] 채팅 창 (진행자와 팀장만) — 접었다 펼 수 있음 */
-function mountChat(root, net, { storeKey, startCollapsed = false } = {}) {
+function mountChat(root, net, { storeKey, startCollapsed = false, canHide = false } = {}) {
   root.innerHTML = `
     <button class="chat-head" type="button"><span>채팅</span><b class="unread" hidden>0</b><span class="grow"></span><span class="chev"></span></button>
     <div class="chat-body">
@@ -639,6 +652,18 @@ function mountChat(root, net, { storeKey, startCollapsed = false } = {}) {
     root.dispatchEvent(new Event("chattoggle"));
   }
   head.addEventListener("click", () => setCollapsed(!collapsed));
+  // 진행자: 메시지마다 방송에서 숨기기 / 다시 보이기
+  list.addEventListener("click", e => {
+    const b = e.target.closest("[data-hide]"); if (!b) return;
+    b.disabled = true; net.hideChat(Number(b.closest("li").dataset.id), b.dataset.hide === "1").finally(() => { b.disabled = false; });
+  });
+  function fill(li, m) {
+    const time = new Date(m.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+    li.classList.toggle("hid", !!m.hidden);
+    li.innerHTML = `<b style="color:${esc(m.color)}">${esc(m.sender)}</b>${esc(m.body)}<small>${time}</small>`
+      + (m.hidden ? `<em class="hid-tag">방송에서 숨김</em>` : "")
+      + (canHide ? `<button type="button" class="hide-btn" data-hide="${m.hidden ? 0 : 1}">${m.hidden ? "다시 보이기" : "방송에서 숨기기"}</button>` : "");
+  }
   root.querySelector("form").addEventListener("submit", async e => {
     e.preventDefault();
     const body = input.value.trim(); if (!body) return;
@@ -654,14 +679,14 @@ function mountChat(root, net, { storeKey, startCollapsed = false } = {}) {
       for (const m of msgs) {
         const li = document.createElement("li");
         li.dataset.id = m.id;
-        const time = new Date(m.at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
-        li.innerHTML = `<b style="color:${esc(m.color)}">${esc(m.sender)}</b>${esc(m.body)}<small>${time}</small>`;
+        fill(li, m);
         const after = [...list.children].find(x => Number(x.dataset.id) > m.id);
         list.insertBefore(li, after || null);
       }
       if (collapsed) { unread += msgs.length; unreadEl.hidden = false; unreadEl.textContent = unread; }
       else if (atBottom) list.scrollTop = list.scrollHeight;
     },
+    update(m) { const li = list.querySelector(`li[data-id="${m.id}"]`); if (li) fill(li, m); },
   };
 }
 

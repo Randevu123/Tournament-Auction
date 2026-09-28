@@ -266,6 +266,11 @@
 .chat-list li b { margin-right: 6px; }
 .chat-list li small { color: var(--muted); font-size: 11px; margin-left: 4px; }
 .chat-list .empty { color: var(--muted); font-size: 13px; }
+.chat-list li.hid > b, .chat-list li.hid { color: var(--muted); }
+.chat-list li.hid { opacity: .7; }
+.chat-list .hid-tag { font-style: normal; font-size: 11px; color: var(--warn); margin-left: 6px; }
+.chat-list .hide-btn { margin-left: 6px; font-size: 11px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); cursor: pointer; }
+.chat-list .hide-btn:hover { color: var(--text); border-color: var(--accent); }
 .chat-form { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line); }
 .chat-form input { flex: 1; min-width: 0; background: var(--panel-2); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 9px 10px; font-size: 16px; }
 .chat-form button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 0 14px; font-weight: 900; }

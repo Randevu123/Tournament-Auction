@@ -155,7 +155,7 @@ async function boot() {
   placeChat();
   net = connect({
     id, key, presenceKey: `team-${ME}`, presenceInfo: { role: "team", team: ME },
-    onState, onChat: msgs => chat && chat.add(msgs), onConn: setConn,
+    onState, onChat: msgs => chat && chat.add(msgs), onChatUpdate: m => chat && chat.update(m), onConn: setConn,
   });
   chat = mountChat($("chat"), net, { storeKey: "valo-chat-team", startCollapsed: innerWidth <= 900 });
   $("chat").addEventListener("chattoggle", measureBar);

@@ -80,6 +80,7 @@ create table if not exists public.chat (
   body       text not null,
   created_at timestamptz not null default now()
 );
+alter table public.chat add column if not exists hidden boolean not null default false;   -- 진행자가 방송 화면에서 숨긴 메시지
 
 -- 3단계: 참가 신청 (디스코드 로그인)
 -- 신청 링크에는 경매 번호 대신 신청 전용 코드를 씀 (신청 링크는 공개되므로 경매 번호를 숨김)
@@ -523,8 +524,10 @@ create or replace function public.get_chat(p_id uuid, p_key text, p_after bigint
 language plpgsql stable security definer set search_path = public as $$
 begin
   -- 채팅은 진행자와 팀장이 쓰고, 방송 화면은 읽기만 함 (보내기는 send_chat이 진행자·팀장만 허용)
+  -- 진행자가 숨긴 메시지는 방송 화면에 내용을 보내지 않음 (진행자·팀장에게는 "숨김" 표시와 함께 보임)
   if (select role from _auth(p_id, p_key)) is null or (select role from _auth(p_id, p_key)) not in ('host', 'team', 'screen') then return null; end if;
-  return (select coalesce(jsonb_agg(jsonb_build_object('id', c.id, 'sender', c.sender, 'color', c.color, 'body', c.body,
+  return (select coalesce(jsonb_agg(jsonb_build_object('id', c.id, 'sender', c.sender, 'color', c.color, 'hidden', c.hidden,
+            'body', case when c.hidden and (select role from _auth(p_id, p_key)) = 'screen' then '' else c.body end,
             'at', (extract(epoch from c.created_at) * 1000)::bigint) order by c.id), '[]')
           from (select * from chat where auction_id = p_id and id > coalesce(p_after, 0) order by id desc limit 100) c);
 end $$;
@@ -539,7 +542,19 @@ begin
   if w.role = 'host' then v_name := '진행자'; v_color := '#ffffff';
   else select name, color into v_name, v_color from teams where auction_id = p_id and idx = w.team_idx; end if;
   insert into chat (auction_id, sender, color, body) values (p_id, v_name, v_color, v_body) returning * into v_row;
-  return jsonb_build_object('ok', true, 'msg', jsonb_build_object('id', v_row.id, 'sender', v_row.sender, 'color', v_row.color,
+  return jsonb_build_object('ok', true, 'msg', jsonb_build_object('id', v_row.id, 'sender', v_row.sender, 'color', v_row.color, 'hidden', false,
+           'body', v_row.body, 'at', (extract(epoch from v_row.created_at) * 1000)::bigint));
+end $$;
+
+-- 채팅 메시지를 방송 화면에서 숨기기 / 다시 보이기 (진행자만)
+create or replace function public.hide_chat(p_id uuid, p_key text, p_msg bigint, p_hidden boolean) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_row chat;
+begin
+  if (select role from _auth(p_id, p_key)) is distinct from 'host' then return jsonb_build_object('ok', false, 'reason', '진행자만 채팅을 숨길 수 있어요.'); end if;
+  update chat set hidden = coalesce(p_hidden, true) where auction_id = p_id and id = p_msg returning * into v_row;
+  if v_row.id is null then return jsonb_build_object('ok', false, 'reason', '메시지를 찾지 못했어요.'); end if;
+  return jsonb_build_object('ok', true, 'msg', jsonb_build_object('id', v_row.id, 'sender', v_row.sender, 'color', v_row.color, 'hidden', v_row.hidden,
            'body', v_row.body, 'at', (extract(epoch from v_row.created_at) * 1000)::bigint));
 end $$;
 
@@ -868,12 +883,12 @@ revoke execute on function public._cfg_int(public.auctions, text), public._auth(
 
 revoke execute on function public.create_auction(jsonb, jsonb), public.whoami(uuid, text), public.get_links(uuid, text),
   public.get_state(uuid, text), public.get_photos(uuid, text), public.get_chat(uuid, text, bigint),
-  public.send_chat(uuid, text, text), public.place_bid(uuid, text, int), public.tick(uuid, text),
+  public.send_chat(uuid, text, text), public.hide_chat(uuid, text, bigint, boolean), public.place_bid(uuid, text, int), public.tick(uuid, text),
   public.host_action(uuid, text, text, jsonb)
   from public;
 grant execute on function public.create_auction(jsonb, jsonb), public.whoami(uuid, text), public.get_links(uuid, text),
   public.get_state(uuid, text), public.get_photos(uuid, text), public.get_chat(uuid, text, bigint),
-  public.send_chat(uuid, text, text), public.place_bid(uuid, text, int), public.tick(uuid, text),
+  public.send_chat(uuid, text, text), public.hide_chat(uuid, text, bigint, boolean), public.place_bid(uuid, text, int), public.tick(uuid, text),
   public.host_action(uuid, text, text, jsonb)
   to anon, authenticated;
 
