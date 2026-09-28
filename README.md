@@ -80,6 +80,8 @@
 ## 주 요원
 
 - 참가 신청 때 주 요원을 1~3개 고릅니다(누른 순서 = 잘하는 순서). 목록은 `common.js`의 `AGENTS`에 역할별로 있고(2026년 9월 기준 29명), 새 요원이 나오면 이름만 더하면 됩니다.
+- **요원 아이콘**: `agents/` 폴더(128px PNG)와 `agents/agents.json`(이름·역할·파일). GitHub Actions의 "Update agent icons" → "Run workflow"를 누르면 [valorant-api.com](https://valorant-api.com)(팬이 운영하는 비공식 API)에서 한국어 이름과 아이콘을 받아 저장하고 사이트를 다시 배포합니다. 새 요원이 나오면 이것만 누르면 고르기 목록에도 자동으로 추가됩니다.
+- 요원 그림의 권리는 Riot Games에 있고, [Riot Games 'Legal Jibber Jabber'](https://www.riotgames.com/en/legal) 팬 콘텐츠 정책에 따라 비상업적으로 씁니다. 신청 화면과 방송 화면 아래에 정책 안내 문구가 붙어 있습니다.
 - 운영자 콘솔 참가자 표·고치기 창·명단 CSV, 경매 선수 카드(진행자·팀장·방송 화면), 결과 엑셀에 나옵니다. 콘솔에서 고치면 이미 경매에 올라간 선수에도 반영되고 진행 기록에 남습니다.
 
 ## 방송 화면 (`screen.html`, OBS)

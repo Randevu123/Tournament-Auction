@@ -128,6 +128,7 @@
       <div class="hint">고칠 내용이 있으면 진행자에게 말해 주세요.</div>
     </section>
   </div>
+  <p class="riot-notice" id="riotNotice"></p>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -140,6 +141,7 @@
    ===================================================================== */
 const $ = id => document.getElementById(id);
 const CODE = new URLSearchParams(location.search).get("s");
+$("riotNotice").textContent = RIOT_NOTICE;
 let sb = null, session = null, pos = "", done = false, info = null;
 function when(ms) { return new Date(ms).toLocaleString("ko-KR", { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" }); }
 

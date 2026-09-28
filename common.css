@@ -391,3 +391,8 @@
 .agents.sm { display: flex; margin-top: 4px; }
 .p-agents { margin-top: 8px; min-height: 0; }
 .agents.lg .ag { font-size: 15px; padding: 3px 11px; }
+.agents .ag { display: inline-flex; align-items: center; gap: 4px; }
+.ag-ic { border-radius: 50%; background: rgba(0,0,0,.35); object-fit: cover; flex: none; }
+.agent-pick button { display: inline-flex; align-items: center; gap: 5px; }
+.agent-pick .ag-ic { width: 22px; height: 22px; }
+.riot-notice { font-size: 11px; color: #5b6378; line-height: 1.5; text-align: center; }

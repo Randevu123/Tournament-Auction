@@ -623,7 +623,7 @@ function render(prev) {
   $("pPhoto").innerHTML = p ? avatar(p, 130) : "";
   $("pName").textContent = p ? p.name : (s.status === "done" ? "경매 종료" : "-");
   $("pPos").textContent = p ? p.pos : "-";
-  $("pAgents").innerHTML = p ? agentChips(p, "lg") : "";
+  $("pAgents").innerHTML = p ? agentChips(p, "lg", 26) : "";
   $("pMotto").textContent = p && p.motto ? `“${p.motto}”` : "";
   $("pPeak").innerHTML = p ? `${esc(p.peak)} <em>${tierPoints(p.peak)}점</em>` : "-";
   $("pCur").innerHTML = p ? `${esc(p.current)} <em>${tierPoints(p.current)}점</em>` : "-";

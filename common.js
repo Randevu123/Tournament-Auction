@@ -76,6 +76,24 @@ const AGENTS = {
   "전략가": ["브림스톤", "바이퍼", "오멘", "아스트라", "하버", "클로브", "믹스"],
 };
 const MAX_AGENTS = 3;
+// 요원 아이콘: agents/agents.json (GitHub Actions "Update agent icons"가 받아 둔 목록). 없으면 이름만 보임
+const AGENT_ICONS = {};
+const agentListeners = [];
+function onAgentIcons(fn) { agentListeners.push(fn); }
+function loadAgentIcons() {
+  fetch("agents/agents.json", { cache: "no-cache" }).then(r => (r.ok ? r.json() : [])).then(list => {
+    (list || []).forEach(a => {
+      if (!a || !a.name || !a.file) return;
+      AGENT_ICONS[a.name] = a.file;
+      if (AGENTS[a.role] && !Object.values(AGENTS).some(l => l.includes(a.name))) AGENTS[a.role].push(a.name);   // 새 요원은 목록에 자동 추가
+    });
+    agentListeners.forEach(fn => { try { fn(); } catch (e) { /* 화면마다 다음 갱신 때 다시 그림 */ } });
+  }).catch(() => {});
+}
+function agentIcon(name, size) {
+  const f = AGENT_ICONS[name];
+  return f ? `<img class="ag-ic" src="${esc(f)}" alt="" width="${size}" height="${size}">` : "";
+}
 // 주 요원 고르기 칸 (신청 화면·운영자 콘솔이 함께 씀). 누르면 고르고 다시 누르면 빠짐, 최대 3개
 function mountAgentPicker(root, selected, onChange) {
   const picked = selected.slice(0, MAX_AGENTS);
@@ -83,7 +101,7 @@ function mountAgentPicker(root, selected, onChange) {
     root.className = "agent-pick";
     root.innerHTML = Object.entries(AGENTS).map(([role, list]) => `<div class="role"><small>${role}</small><div>${list.map(a => {
       const i = picked.indexOf(a);
-      return `<button type="button" data-agent="${esc(a)}" class="${i >= 0 ? "on" : ""}">${i >= 0 ? `<span class="no">${i + 1}</span>` : ""}${esc(a)}</button>`;
+      return `<button type="button" data-agent="${esc(a)}" class="${i >= 0 ? "on" : ""}">${i >= 0 ? `<span class="no">${i + 1}</span>` : ""}${agentIcon(a, 22)}${esc(a)}</button>`;
     }).join("")}</div></div>`).join("");
   }
   root.onclick = e => {
@@ -95,14 +113,17 @@ function mountAgentPicker(root, selected, onChange) {
     draw(); onChange && onChange(picked.slice());
   };
   draw();
+  onAgentIcons(draw);
   return { get: () => picked.slice() };
 }
 function agentsOf(p) { return Array.isArray(p && p.agents) ? p.agents : []; }
 // 주 요원 칩 (없으면 빈 문자열)
-function agentChips(p, cls = "") {
+function agentChips(p, cls = "", icon = 20) {
   const a = agentsOf(p);
-  return a.length ? `<span class="agents ${cls}">${a.map(x => `<span class="ag">${esc(x)}</span>`).join("")}</span>` : "";
+  return a.length ? `<span class="agents ${cls}">${a.map(x => `<span class="ag">${agentIcon(x, icon)}${esc(x)}</span>`).join("")}</span>` : "";
 }
+// Riot Games 팬 콘텐츠 정책(Legal Jibber Jabber)에 따라 요원 그림을 쓸 때 붙이는 안내
+const RIOT_NOTICE = "이 사이트는 Riot Games의 ‘Legal Jibber Jabber’ 정책에 따라 Riot Games 소유 자산을 사용해 만들었습니다. Riot Games는 이 프로젝트를 보증하거나 후원하지 않습니다.";
 const PLAYERS_SEED = [
   ["새벽고양이", "불멸 2", "초월자 3", "타격대", true, "우승 아니면 은퇴합니다"],
   ["한강라면", "다이아몬드 1", "플래티넘 3", "전략가", true, "연막 하나는 자신 있어요"],
@@ -497,3 +518,5 @@ function playResultReveal(container, { gap = 1100 } = {}) {
     }
   }, 500 + i * gap));
 }
+
+loadAgentIcons();

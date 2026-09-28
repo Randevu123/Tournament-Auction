@@ -125,7 +125,7 @@
 
   .pagents { margin-top: 14px; min-height: 0; }
   .pagents .agents { gap: 8px; }
-  .pagents .ag { font-size: 24px; padding: 4px 16px; }
+  .pagents .ag { font-size: 24px; padding: 4px 18px 4px 4px; gap: 10px; }
   .pagents .ag:first-child { background: rgba(255,209,102,.28); }
 
   /* 순서 추첨 (진행자 화면에서 추첨하면 같은 연출이 여기에도 나옴) */
@@ -225,6 +225,7 @@
         <ol class="dlist" id="dList"></ol>
       </div>
     </div>
+    <div class="riot-notice" id="riotNotice" style="position:absolute;left:48px;bottom:8px;text-align:left;font-size:12px;color:#3f4658"></div>
     <div class="offline" id="offline" hidden>다시 연결 중</div>
     <div class="flash" id="flash"><div class="flash-inner"><div id="flashPhoto"></div><div class="flash-title" id="flashTitle"></div><div class="flash-sub" id="flashSub"></div></div></div>
   </div>
@@ -250,6 +251,7 @@ function fit() {
   $("fit").style.transform = `scale(${k}) translate(-50%, -50%)`;
 }
 addEventListener("resize", fit); fit();
+$("riotNotice").textContent = RIOT_NOTICE;
 
 async function boot() {
   const { id, key } = linkParams();
@@ -311,7 +313,7 @@ function showRoul(p, locked, no) {
   $("dNo").textContent = `${no}번`;
   $("dPhoto").innerHTML = avatar(p, 220);
   $("dName").textContent = p.name;
-  $("dSub").innerHTML = locked ? `${esc(p.pos)} · ${esc(p.peak)} / ${esc(p.current)} ${agentChips(p, "lg")}` : "";
+  $("dSub").innerHTML = locked ? `${esc(p.pos)} · ${esc(p.peak)} / ${esc(p.current)} ${agentChips(p, "lg", 30)}` : "";
 }
 function addDrawn(i, p) {
   const li = document.createElement("li");
@@ -389,7 +391,7 @@ function renderLot(s) {
   } else if (p && !$("pPhoto").querySelector("img") && p.photo) $("pPhoto").innerHTML = avatar(p, 260);
   $("pName").textContent = p ? p.name : "-";
   $("pPos").textContent = p ? p.pos : "-";
-  $("pAgents").innerHTML = p ? agentChips(p) : "";
+  $("pAgents").innerHTML = p ? agentChips(p, "", 44) : "";
   $("pMotto").textContent = p && p.motto ? `“${p.motto}”` : "";
   $("pPeak").textContent = p ? p.peak : "-";
   $("pCur").textContent = p ? p.current : "-";
