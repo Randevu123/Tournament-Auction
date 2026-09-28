@@ -385,7 +385,7 @@ function render(prev) {
       $("resultBody").innerHTML = resultHtml(s, { reveal: willReveal, discord: false });
       if (willReveal) { revealed = true; setTimeout(() => playResultReveal($("resultBody"), { gap: 1500 }), (c.resultShowMs || 2200) + 300); }
     }
-  } else { resultSig = ""; if (!setup) sawRunning = true; }
+  } else { resultSig = ""; revealed = false; if (!setup) sawRunning = true; }   // 되돌리기로 경매가 다시 열리면 다음에 또 발표 연출
 
   // 경매 중
   const showLot = !setup && !done;

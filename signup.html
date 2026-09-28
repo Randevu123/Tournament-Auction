@@ -47,6 +47,13 @@
   fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 14px; }
   fieldset:disabled { opacity: .45; }
   .done { text-align: center; border-color: var(--ok); box-shadow: 0 0 40px rgba(61,220,151,.15); }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; cursor: pointer; }
+  .check input { width: 20px; height: 20px; flex: none; margin-top: 1px; accent-color: var(--accent); }
+  .check small { color: var(--muted); }
+  .privacy { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; font-size: 13px; }
+  .privacy summary { cursor: pointer; font-weight: 700; }
+  .privacy ul { margin: 10px 0 2px; padding-left: 18px; display: grid; gap: 6px; color: #c9cfdf; line-height: 1.55; }
+  .privacy b { color: var(--text); margin-right: 4px; }
   .done-acts { display: flex; gap: 8px; justify-content: center; }
   .done-acts .btn { padding: 10px 16px; }
   .done .big { font-family: var(--num); font-size: 44px; color: var(--ok); }
@@ -120,6 +127,18 @@
             <label for="motto">각오 한마디 <span style="color:var(--muted);font-weight:400">(선택, 경매 때 선수 카드에 나와요)</span></label>
             <input id="motto" maxlength="60" autocomplete="off" placeholder="예: 연막 하나는 자신 있어요">
           </div>
+          <label class="check"><input type="checkbox" id="showAvatar"> <span>경매·방송 화면의 내 선수 사진으로 <b>디스코드 프로필 사진</b>을 써도 좋아요 <small>(선택, 안 고르면 이름 첫 글자가 나와요)</small></span></label>
+          <details class="privacy" id="privacyBox">
+            <summary>개인정보 안내 (꼭 읽어 주세요)</summary>
+            <ul>
+              <li><b>모으는 것</b> 디스코드 표시 이름·아이디(@)·프로필 사진 주소·디스코드 번호, 그리고 여기 적은 게임 닉네임·티어·포지션·주 요원·각오 한마디</li>
+              <li><b>쓰는 곳</b> 이 내전의 팀 경매 진행 (운영자 명단 확인, 경매 화면, 결과 엑셀)</li>
+              <li><b>보는 사람</b> 운영자·진행자는 전부 봐요. 팀장은 경매 화면과 결과(디스코드 이름 포함)를 봐요. 방송 화면에는 게임 닉네임·티어·포지션·주 요원·각오만 나오고, 디스코드 이름은 나오지 않아요. 프로필 사진은 위에서 고른 경우에만 나와요.</li>
+              <li><b>이메일</b> 디스코드 로그인 때 로그인 서비스(Supabase)가 이메일을 함께 받아 보관하지만, 이 사이트는 이메일을 읽지도 쓰지도 않아요.</li>
+              <li><b>보관 기간</b> 운영자가 이 회차를 지울 때까지. 신청 기간 안에는 직접 취소하면 바로 지워지고, 그 뒤에는 운영자에게 삭제를 요청하면 돼요. 로그인 기록까지 지우려면 운영자에게 말해 주세요.</li>
+            </ul>
+          </details>
+          <label class="check" id="consentRow"><input type="checkbox" id="consent"> <span>위 개인정보 안내를 읽었고 동의해요 <span class="req">*</span></span></label>
           <div class="score-line" id="scoreLine"></div>
           <button class="submit" id="btnSubmit" type="submit" disabled>신청하기</button>
         </fieldset>
@@ -167,7 +186,7 @@ $("posPick").addEventListener("click", e => {
   document.querySelectorAll("#posPick button").forEach(x => x.classList.toggle("on", x === b));
   check();
 });
-["nick", "peak", "current"].forEach(id => $(id).addEventListener("input", check));
+["nick", "peak", "current", "consent"].forEach(id => $(id).addEventListener("input", check));
 let agentPick = mountAgentPicker($("agentPick"), [], check);
 let editing = false, mine = null;   // editing: 이미 한 신청을 고치는 중
 
@@ -179,6 +198,7 @@ function missing() {
   if (!$("current").value) m.push("현재 티어");
   if (!pos) m.push("포지션");
   if (!agentPick.get().length) m.push("주 요원");
+  if (!editing && !$("consent").checked) m.push("개인정보 안내 동의");
   return m;
 }
 function check() {
@@ -205,7 +225,7 @@ function renderLogin() {
   $("fs").disabled = !session || done || (info && !info.open);
   if (session) {
     const d = discordInfo(session.user);
-    $("meAvatar").innerHTML = d.avatar ? `<img src="${esc(d.avatar)}" alt="">` : avatar({ name: d.name }, 52);
+    $("meAvatar").innerHTML = d.avatar ? `<img src="${esc(d.avatar)}" alt="" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='${letterSvg([...d.name][0] || "?")}'">` : avatar({ name: d.name }, 52);
     $("meName").textContent = d.name;
     $("meUser").textContent = d.username ? `@${d.username}` : "";
   }
@@ -220,7 +240,7 @@ function showDone(s, already) {
   $("doneSub").textContent = already ? "이 디스코드 계정으로는 한 번만 신청할 수 있어요." : "진행자 화면 명단에 올라갔어요.";
   $("doneTable").innerHTML = [
     ["디스코드", `${esc(s.discord_name)}${s.discord_username ? ` <span style="color:var(--muted)">@${esc(s.discord_username)}</span>` : ""}`],
-    ["게임 닉네임", esc(s.nick)], ["최고 티어", esc(s.peak)], ["현재 티어", esc(s.current)], ["포지션", esc(s.pos)], ["주 요원", agentsOf(s).length ? agentChips(s) : "-"], ["각오 한마디", s.motto ? esc(s.motto) : "-"],
+    ["게임 닉네임", esc(s.nick)], ["최고 티어", esc(s.peak)], ["현재 티어", esc(s.current)], ["포지션", esc(s.pos)], ["주 요원", agentsOf(s).length ? agentChips(s) : "-"], ["각오 한마디", s.motto ? esc(s.motto) : "-"], ["프로필 사진 사용", s.show_avatar ? "사용해요" : "안 써요 (이름 첫 글자)"],
     ["티어 점수", playerScore(s).toFixed(1)],
   ].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
   if (!already) bumpEl($("doneCard"), "pop");
@@ -273,7 +293,7 @@ $("form").addEventListener("submit", async e => {
   $("btnSubmit").textContent = "보내는 중…";
   if (editing) {
     const { data, error } = await sb.rpc("my_signup_update", { p_code: CODE, p_patch: {
-      nick: $("nick").value.trim(), peak: $("peak").value, current: $("current").value, pos, agents: agentPick.get(), motto: $("motto").value.trim() } });
+      nick: $("nick").value.trim(), peak: $("peak").value, current: $("current").value, pos, agents: agentPick.get(), motto: $("motto").value.trim(), show_avatar: $("showAvatar").checked } });
     $("btnSubmit").textContent = "고친 내용 저장";
     if (error) { toast("서버에 닿지 못했어요. 잠시 뒤 다시 눌러 주세요."); return check(); }
     if (!data.ok) { toast(data.reason); return check(); }
@@ -281,7 +301,7 @@ $("form").addEventListener("submit", async e => {
     return;
   }
   const { data, error } = await sb.rpc("submit_signup", {
-    p_code: CODE, p_nick: $("nick").value.trim(), p_peak: $("peak").value, p_current: $("current").value, p_pos: pos, p_agents: agentPick.get(), p_motto: $("motto").value.trim(),
+    p_code: CODE, p_nick: $("nick").value.trim(), p_peak: $("peak").value, p_current: $("current").value, p_pos: pos, p_agents: agentPick.get(), p_motto: $("motto").value.trim(), p_consent: $("consent").checked, p_show_avatar: $("showAvatar").checked,
   });
   $("btnSubmit").textContent = "신청하기";
   if (error) { toast("서버에 닿지 못했어요. 잠시 뒤 다시 눌러 주세요."); return check(); }
@@ -300,6 +320,7 @@ $("btnEditMine").addEventListener("click", () => {
   if (!mine) return;
   editing = true; done = false;
   $("nick").value = mine.nick; $("peak").value = mine.peak; $("current").value = mine.current; $("motto").value = mine.motto || "";
+  $("showAvatar").checked = !!mine.show_avatar; $("consentRow").hidden = true;   // 동의는 처음 신청할 때 이미 받음
   pos = mine.pos; document.querySelectorAll("#posPick button").forEach(x => x.classList.toggle("on", x.dataset.pos === pos));
   agentPick = mountAgentPicker($("agentPick"), agentsOf(mine), check);
   $("formCard").hidden = false; $("doneCard").hidden = true;
@@ -312,7 +333,7 @@ $("btnCancelMine").addEventListener("click", async () => {
   const { data, error } = await sb.rpc("my_signup_cancel", { p_code: CODE });
   if (error) return toast("서버에 닿지 못했어요.");
   if (!data.ok) return toast(data.reason);
-  toast("신청을 취소했어요."); mine = null; done = false; editing = false;
+  toast("신청을 취소했어요."); mine = null; done = false; editing = false; $("consentRow").hidden = false;
   $("formCard").hidden = false; $("doneCard").hidden = true; $("form").reset(); pos = "";
   document.querySelectorAll("#posPick button").forEach(x => x.classList.remove("on"));
   agentPick = mountAgentPicker($("agentPick"), [], check);

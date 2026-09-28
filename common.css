@@ -458,3 +458,10 @@ a.home-card:hover { transform: translateY(-4px); border-color: var(--accent); bo
 .shot-box .result-team, .shot-box .result-grid.reveal .result-team { animation: none !important; opacity: 1 !important; transform: none !important; }
 .shot-box .result-team.top { box-shadow: none !important; border-width: 2px; border-top-width: 5px; }
 .shot-box .riot-notice { margin: 0; }
+
+/* 팀이 6개 이상이면 팀 이름을 한 줄 통째로 (노트북 화면에서 이름이 잘리지 않게) */
+.teams.many .team-head { flex-wrap: wrap; row-gap: 2px; }
+.teams.many .team-name { flex-basis: 100%; min-width: 0; }
+.teams.many .team-name span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.teams.many .team-points { font-size: 32px; }
+.teams.many .team-max { font-size: 11px; }

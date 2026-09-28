@@ -146,7 +146,9 @@ alter table public.signups add column if not exists bench boolean not null defau
 alter table public.players add column if not exists grade text check (grade in ('A', 'B', 'C', 'D'));
 alter table public.auctions add column if not exists undo jsonb;                         -- 결과 되돌리기용: 결과마다 그 직전 상태 (최근 30개, 쌓임)
 update public.auctions set undo = jsonb_build_array(undo) where jsonb_typeof(undo) = 'object';   -- 예전(하나만) 형식을 목록으로
-alter table public.signups add column if not exists motto text not null default '';       -- 신청할 때 적는 각오 한마디             -- 시작 포인트에서 깎는 핸디캡
+alter table public.signups add column if not exists motto text not null default '';       -- 신청할 때 적는 각오 한마디
+alter table public.signups add column if not exists consented_at timestamptz;              -- 개인정보 안내에 동의한 시각
+alter table public.signups add column if not exists show_avatar boolean not null default false;  -- 경매·방송 화면에 디스코드 프로필 사진을 써도 되는지 (본인이 고름)             -- 시작 포인트에서 깎는 핸디캡
 alter table public.signups add column if not exists memo       text not null default '';        -- 운영자끼리만 보는 메모
 alter table public.signups add column if not exists updated_at timestamptz;
 alter table public.signups add column if not exists updated_by text not null default '';
@@ -274,7 +276,7 @@ language sql stable security definer set search_path = public as $$
                   'captain', p.captain, 'motto', p.motto, 'unsold', p.unsold, 'agents', to_jsonb(p.agents), 'grade', p.grade,
                   'team', p.team_idx, 'price', p.price, 'how', p.how, 'score', p.score_override, 'signup_id', p.signup_id,
                   'discord', (select s.discord_name from signups s where s.id = p.signup_id),
-                  'dc_avatar', (select s.discord_avatar from signups s where s.id = p.signup_id)) order by p.id), '[]')
+                  'dc_avatar', (select s.discord_avatar from signups s where s.id = p.signup_id and s.show_avatar)) order by p.id), '[]')
                 from players p where p.auction_id = a.id),
     'title', a.title, 'locked', _locked(a),
     'undo_count', case when jsonb_typeof(a.undo) = 'array' then jsonb_array_length(a.undo) else 0 end,
@@ -489,11 +491,23 @@ begin
     'screen', (select key from auction_keys where auction_id = p_id and role = 'screen' limit 1));
 end $$;
 
+-- 방송 화면 열쇠로 볼 때는 디스코드 이름을 빼고 줌 (방송에 안 나가는 정보는 아예 안 보냄)
+create or replace function public._state_for(p_id uuid, p_role text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare v jsonb := _state(p_id);
+begin
+  if p_role = 'screen' then
+    v := jsonb_set(v, '{players}', (select coalesce(jsonb_agg(e - 'discord' order by o), '[]') from jsonb_array_elements(v -> 'players') with ordinality x(e, o)));
+  end if;
+  return v;
+end $$;
+
 create or replace function public.get_state(p_id uuid, p_key text) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
+declare v_role text := (select role from _auth(p_id, p_key));
 begin
-  if (select role from _auth(p_id, p_key)) is null then return null; end if;
-  return _state(p_id);
+  if v_role is null then return null; end if;
+  return _state_for(p_id, v_role);
 end $$;
 
 create or replace function public.get_photos(p_id uuid, p_key text) returns jsonb
@@ -580,9 +594,9 @@ end $$;
 -- 시간이 다 됐는지 확인하고 다음으로 넘기기 (진행자·팀장 누구 화면이 불러도 한 번만 처리됨)
 create or replace function public.tick(p_id uuid, p_key text) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare a auctions; v_now timestamptz; v_changed boolean := false;
+declare a auctions; v_now timestamptz; v_changed boolean := false; v_role text := (select role from _auth(p_id, p_key));
 begin
-  if (select role from _auth(p_id, p_key)) is null then return jsonb_build_object('ok', false, 'reason', '링크가 올바르지 않아요.'); end if;
+  if v_role is null then return jsonb_build_object('ok', false, 'reason', '링크가 올바르지 않아요.'); end if;
   select * into a from auctions where id = p_id for update;
   v_now := clock_timestamp();
   if a.status = 'running' and v_now >= a.ends_at then
@@ -591,7 +605,7 @@ begin
     perform _next(p_id); v_changed := true;
   end if;
   if v_changed then perform _bump(p_id); end if;
-  return jsonb_build_object('ok', true, 'changed', v_changed, 'state', _state(p_id));
+  return jsonb_build_object('ok', true, 'changed', v_changed, 'state', _state_for(p_id, v_role));
 end $$;
 
 -- 진행자 조작: set_players / set_order / start / pause / resume / hammer / next / auto / reset
@@ -839,7 +853,7 @@ end $$;
 -- =====================================================================
 revoke execute on function public._cfg_int(public.auctions, text), public._auth(uuid, text), public._log(uuid, text, text),
   public._open_slots(uuid, int), public._state(uuid), public._load_players(uuid, jsonb), public._check_players(jsonb, jsonb),
-  public._finish(uuid), public._next(uuid), public._bump(uuid), public._push_undo(uuid, jsonb)
+  public._finish(uuid), public._next(uuid), public._bump(uuid), public._push_undo(uuid, jsonb), public._state_for(uuid, text)
   from public, anon, authenticated;
 
 revoke execute on function public.create_auction(jsonb, jsonb), public.whoami(uuid, text), public.get_links(uuid, text),
@@ -882,7 +896,7 @@ create or replace function public._signup_json(s public.signups) returns jsonb
 language sql stable as $$
   select jsonb_build_object('id', s.id, 'discord_name', s.discord_name, 'discord_username', s.discord_username,
     'discord_avatar', s.discord_avatar, 'nick', s.nick, 'peak', s.peak, 'current', s.current_tier, 'pos', s.pos,
-    'agents', to_jsonb(s.agents), 'motto', s.motto,
+    'agents', to_jsonb(s.agents), 'motto', s.motto, 'show_avatar', s.show_avatar,
     'at', (extract(epoch from s.created_at) * 1000)::bigint)
 $$;
 
@@ -914,7 +928,9 @@ end $$;
 -- 신청하기: 디스코드 이름은 브라우저가 보낸 값이 아니라 로그인 정보에서 서버가 직접 꺼냄
 drop function if exists public.submit_signup(text, text, text, text, text);   -- 7단계: 주 요원을 받도록 바뀜
 drop function if exists public.submit_signup(text, text, text, text, text, jsonb);   -- 각오 한마디도 받도록 바뀜
-create or replace function public.submit_signup(p_code text, p_nick text, p_peak text, p_current text, p_pos text, p_agents jsonb default '[]', p_motto text default '') returns jsonb
+drop function if exists public.submit_signup(text, text, text, text, text, jsonb, text);   -- 개인정보 동의·프로필 사진 선택을 받도록 바뀜
+create or replace function public.submit_signup(p_code text, p_nick text, p_peak text, p_current text, p_pos text, p_agents jsonb default '[]',
+  p_motto text default '', p_consent boolean default false, p_show_avatar boolean default false) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   v_uid uuid := auth.uid(); v_auction uuid; v_meta jsonb; v_nick text := left(trim(coalesce(p_nick, '')), 16);
@@ -934,14 +950,15 @@ begin
   if not coalesce(_valid_tier(p_peak), false) then return jsonb_build_object('ok', false, 'reason', '최고 티어를 골라 주세요.'); end if;
   if not coalesce(_valid_tier(p_current), false) then return jsonb_build_object('ok', false, 'reason', '현재 티어를 골라 주세요.'); end if;
   if not coalesce(_valid_pos(p_pos), false) then return jsonb_build_object('ok', false, 'reason', '포지션을 골라 주세요.'); end if;
+  if not coalesce(p_consent, false) then return jsonb_build_object('ok', false, 'reason', '개인정보 안내를 읽고 동의해 주세요.'); end if;
 
   select coalesce(raw_user_meta_data, '{}') into v_meta from auth.users where id = v_uid;
   v_user := regexp_replace(coalesce(v_meta ->> 'full_name', v_meta ->> 'name', ''), '#0$', '');
   v_name := coalesce(nullif(v_meta #>> '{custom_claims,global_name}', ''), nullif(v_user, ''), '이름 없음');
 
-  insert into signups (auction_id, user_id, discord_id, discord_name, discord_username, discord_avatar, nick, peak, current_tier, pos, agents, motto)
+  insert into signups (auction_id, user_id, discord_id, discord_name, discord_username, discord_avatar, nick, peak, current_tier, pos, agents, motto, consented_at, show_avatar)
   values (v_auction, v_uid, coalesce(v_meta ->> 'provider_id', v_meta ->> 'sub', ''), left(v_name, 40), left(v_user, 40),
-          left(coalesce(v_meta ->> 'avatar_url', ''), 300), v_nick, p_peak, p_current, p_pos, _clean_agents(p_agents), left(trim(coalesce(p_motto, '')), 60))
+          left(coalesce(v_meta ->> 'avatar_url', ''), 300), v_nick, p_peak, p_current, p_pos, _clean_agents(p_agents), left(trim(coalesce(p_motto, '')), 60), now(), coalesce(p_show_avatar, false))
   on conflict (auction_id, user_id) do nothing
   returning * into s;
   if s.id is null then       -- 거의 동시에 두 번 눌렀을 때
@@ -965,9 +982,9 @@ end $$;
 revoke execute on function public._valid_tier(text), public._valid_pos(text), public._clean_agents(jsonb), public._signup_json(public.signups)
   from public, anon, authenticated;
 revoke execute on function public.signup_info(text), public.my_signup(text),
-  public.submit_signup(text, text, text, text, text, jsonb, text), public.get_signups(uuid, text) from public;
+  public.submit_signup(text, text, text, text, text, jsonb, text, boolean, boolean), public.get_signups(uuid, text) from public;
 grant execute on function public.signup_info(text), public.my_signup(text),
-  public.submit_signup(text, text, text, text, text, jsonb, text), public.get_signups(uuid, text) to anon, authenticated;
+  public.submit_signup(text, text, text, text, text, jsonb, text, boolean, boolean), public.get_signups(uuid, text) to anon, authenticated;
 
 -- =====================================================================
 -- 운영자 콘솔 (admin.html) — 디스코드로 로그인한 진행자·운영자만
@@ -1401,6 +1418,8 @@ begin
   if coalesce(trim(p_confirm), '') <> v_title then return jsonb_build_object('ok', false, 'reason', '회차 이름이 맞지 않아요. 똑같이 적어 주세요.'); end if;
   select count(*) into v_signups from signups where auction_id = p_id;
   perform _slog(null, '회차 지움', format('%s (신청 %s명, 상태 %s)', v_title, v_signups, a.status));
+  -- 지운 회차 참가자의 닉네임·디스코드 이름이 기록에 남지 않게 내용만 가림 (누가 언제 무엇을 했는지는 남김)
+  update staff_log set detail = '(회차를 지워서 참가자 정보를 가렸어요)' where auction_id = p_id and detail <> '';
   delete from auctions where id = p_id;   -- 선수·팀·신청·검수·할 일·채팅·링크가 함께 지워짐 (진행 기록은 남음)
   return jsonb_build_object('ok', true);
 end $$;
@@ -1450,6 +1469,10 @@ begin
   v_peak := coalesce(p_patch ->> 'peak', s.peak); v_cur := coalesce(p_patch ->> 'current', s.current_tier); v_pos := coalesce(p_patch ->> 'pos', s.pos);
   v_agents := case when p_patch ? 'agents' then _clean_agents(p_patch -> 'agents') else s.agents end;
   v_motto := case when p_patch ? 'motto' then left(trim(coalesce(p_patch ->> 'motto', '')), 60) else s.motto end;
+  if p_patch ? 'show_avatar' and (p_patch ->> 'show_avatar')::boolean is distinct from s.show_avatar then
+    update signups set show_avatar = (p_patch ->> 'show_avatar')::boolean where id = s.id;
+    update auctions set version = version + 1 where id = a.id;
+  end if;
   if v_nick = '' then return jsonb_build_object('ok', false, 'reason', '게임 닉네임을 적어 주세요.'); end if;
   if not _valid_tier(v_peak) or not _valid_tier(v_cur) then return jsonb_build_object('ok', false, 'reason', '티어를 골라 주세요.'); end if;
   if not _valid_pos(v_pos) then return jsonb_build_object('ok', false, 'reason', '포지션을 골라 주세요.'); end if;
@@ -1461,7 +1484,7 @@ begin
     case when v_agents <> s.agents then format('주 요원 → %s', coalesce(nullif(array_to_string(v_agents, ', '), ''), '없음')) end,
     case when v_motto <> s.motto then format('각오 → "%s"', v_motto) end,
     case when v_peak <> s.peak or v_cur <> s.current_tier then '(티어가 바뀌어 검수 초기화)' end);
-  if v_changes = '' then return jsonb_build_object('ok', true, 'signup', _signup_json(s)); end if;
+  if v_changes = '' then return jsonb_build_object('ok', true, 'signup', _signup_json((select x from signups x where x.id = s.id))); end if;
   if v_peak <> s.peak or v_cur <> s.current_tier then delete from signup_checks where signup_id = s.id; end if;
   update signups set nick = v_nick, peak = v_peak, current_tier = v_cur, pos = v_pos, agents = v_agents, motto = v_motto,
          updated_at = now(), updated_by = '본인' where id = s.id returning * into s;

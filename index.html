@@ -628,6 +628,7 @@ function buildTeams() {
   const wrap = $("teams");
   wrap.innerHTML = "";
   wrap.style.setProperty("--tn", Math.max(1, S.teams.length));   // 6팀이어도 한 줄에
+  wrap.classList.toggle("many", S.teams.length >= 6);
   for (const t of S.teams) {
     const el = document.createElement("div");
     el.className = "team";
@@ -665,7 +666,7 @@ function render(prev) {
       $("resultBody").innerHTML = resultHtml(s, { reveal: willReveal });   // 연출할 때는 처음부터 카드를 숨겨 둠 (깜빡임 방지)
       if (willReveal) { revealed = true; setTimeout(() => playResultReveal($("resultBody")), (s.config.resultShowMs || 2200) + 200); }
     }
-  } else { resultSig = ""; if (!setup) sawRunning = true; }
+  } else { resultSig = ""; revealed = false; if (!setup) sawRunning = true; }   // 되돌리기로 경매가 다시 열리면 다음에 또 발표 연출
 
   const p = s.players.find(x => x.id === s.current) || null;
   $("pPhoto").innerHTML = p ? avatar(p, 130) : "";
