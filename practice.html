@@ -15,6 +15,8 @@
   .bids .direct input { flex: 1; min-width: 0; background: var(--panel-2); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 8px; }
   .bids .direct button { background: var(--panel-2); color: var(--c); border: 1px solid var(--c); border-radius: 8px; padding: 0 12px; font-weight: 900; }
   .ed-fields .score-in { width: 100%; }
+  .ed-fields .rec { font-size: 11px; color: var(--muted); opacity: .6; white-space: nowrap; }
+  .ed-fields .rec.same { opacity: .3; }
 </style>
 </head>
 <body>
@@ -482,7 +484,7 @@ function buildEditor() {
           <label class="ed-cap"><input type="checkbox" data-f="captain" ${p.captain ? "checked" : ""}> 팀장</label>
         </div>
         <div class="row2">
-          <div><small>경매 티어</small><select data-f="grade" ${p.captain ? "disabled" : ""}><option value="">없음</option>${GRADES.map(g => `<option ${g === p.grade ? "selected" : ""}>${g}</option>`).join("")}</select></div>
+          <div><small>경매 티어</small><select data-f="grade" ${p.captain ? "disabled" : ""}><option value="">없음</option>${GRADES.map(g => `<option ${g === p.grade ? "selected" : ""}>${g}</option>`).join("")}</select> <span class="rec" data-rec></span></div>
           <label class="ed-cap"><input type="checkbox" data-f="bench" ${p.bench ? "checked" : ""} ${p.captain ? "disabled" : ""}> 대기 (대타)</label>
         </div>
         <div class="row2">
@@ -495,7 +497,15 @@ function buildEditor() {
   $("edGrid").querySelectorAll("[data-posfor]").forEach(el => { const d = draft[el.dataset.posfor]; mountPosPicker(el, d.pos, v => { d.pos = v; }); });   // 포지션 여러 개
   updateCapCount();
 }
+// 추천 경매 티어 (점수 순, 참고용)를 선수 칸 옆에 흐리게
+function updateRec() {
+  const n = draft.filter(p => p.captain).length || Math.floor(draft.length / 5);
+  const it = (p, i) => ({ id: i, order: i, score: playerScore(p) });
+  const rec = recommendGrades(draft.map(it).filter(x => !draft[x.id].captain && !draft[x.id].bench), draft.map(it).filter(x => !draft[x.id].captain && draft[x.id].bench), n);
+  $("edGrid").querySelectorAll("[data-i]").forEach(el => { const r = el.querySelector("[data-rec]"), g = rec[el.dataset.i]; if (r) { r.textContent = g ? `추천 ${g}` : ""; r.classList.toggle("same", !!g && draft[el.dataset.i].grade === g); } });
+}
 function updateCapCount() {
+  updateRec();
   const n = draft.filter(p => p.captain).length, el = $("capCount");
   const bench = draft.filter(p => p.bench && !p.captain).length, play = draft.length - bench;
   const cnt = GRADES.map(g => draft.filter(p => !p.captain && !p.bench && p.grade === g).length);
@@ -513,6 +523,7 @@ $("edGrid").addEventListener("input", e => {
   else if (f === "score") p.score = e.target.value === "" ? null : Number(e.target.value);
   else if (f) p[f] = e.target.value;
   if (f === "peak" || f === "current") { card.querySelector("[data-auto]").textContent = scoreFormula(p); card.querySelector('[data-f="score"]').placeholder = autoScore(p).toFixed(1); }
+  if (f === "peak" || f === "current" || f === "score") updateRec();
 });
 $("edGrid").addEventListener("change", e => {
   if (e.target.type !== "file" || !e.target.files[0]) return;

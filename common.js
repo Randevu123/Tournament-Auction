@@ -266,14 +266,18 @@ function splitGrades(list, teamSize = 5, teamsWanted = null) {
   const rest = list.filter(x => !x.captain).sort((a, b) => a.order - b.order);   // 신청 순서
   const need = Math.max(0, teams * teamSize - caps.length);
   const main = rest.slice(0, need), bench = rest.slice(need);
+  return { teams, bench: bench.map(x => x.id), grades: recommendGrades(main, bench, teams) };
+}
+// 추천 경매 티어: 경매 선수를 점수 높은 순으로 팀 수만큼씩 A·B·C·D, 대기 인원은 점수가 들어갈 티어
+// main·bench: [{id, order, score}], 돌려줌: {id: "A"}. 진행자가 참고만 하고 실제 티어는 직접 고름
+function recommendGrades(main, bench, teams) {
   const grades = {};
   const ranked = main.slice().sort((a, b) => b.score - a.score || a.order - b.order);
-  const per = Math.max(1, Math.ceil(ranked.length / GRADES.length));
-  ranked.forEach((x, i) => { grades[x.id] = GRADES[Math.min(GRADES.length - 1, Math.floor(i / (ranked.length === teams * 4 ? teams : per)))]; });
-  // 대기 인원: 점수가 들어갈 티어 (그 티어의 가장 낮은 점수 이상이면 그 티어)
+  const per = ranked.length === teams * 4 && teams > 0 ? teams : Math.max(1, Math.ceil(ranked.length / GRADES.length));
+  ranked.forEach((x, i) => { grades[x.id] = GRADES[Math.min(GRADES.length - 1, Math.floor(i / per))]; });
   const floor = {}; GRADES.forEach(g => { const sc = ranked.filter(x => grades[x.id] === g).map(x => x.score); floor[g] = sc.length ? Math.min(...sc) : -Infinity; });
   bench.forEach(x => { grades[x.id] = GRADES.find(g => x.score >= floor[g]) || "D"; });
-  return { teams, bench: bench.map(x => x.id), grades };
+  return grades;
 }
 
 /* [4-3] 효과음 (파일 없이 브라우저가 직접 만드는 소리) */

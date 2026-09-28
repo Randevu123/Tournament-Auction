@@ -1432,6 +1432,28 @@ declare v_key text; r jsonb;
 begin
   if not _can_host(p_id) then return jsonb_build_object('ok', false, 'reason', '이 회차의 진행자나 제작자만 경매 준비를 할 수 있어요.'); end if;
   if _locked_id(p_id) then return _lock_msg(); end if;
+  -- 경매 준비 저장 (선수 채우기 없이): arg = {captains: [신청 번호], exclude: [대기 신청 번호], grades: {"신청 번호": "A"|""}}
+  if p_action = 'save_prep' then
+    if (select status from auctions where id = p_id) <> 'setup' then
+      return jsonb_build_object('ok', false, 'reason', '경매 준비 단계에서만 저장할 수 있어요.');
+    elsif jsonb_typeof(coalesce(p_arg -> 'captains', '[]')) <> 'array' or jsonb_typeof(coalesce(p_arg -> 'exclude', '[]')) <> 'array'
+       or jsonb_typeof(coalesce(p_arg -> 'grades', '{}')) <> 'object' then
+      return jsonb_build_object('ok', false, 'reason', '저장할 내용이 올바르지 않아요.');
+    elsif jsonb_array_length(coalesce(p_arg -> 'captains', '[]')) > 8 then
+      return jsonb_build_object('ok', false, 'reason', '팀장은 8명까지예요.');
+    elsif exists (select 1 from jsonb_each_text(coalesce(p_arg -> 'grades', '{}')) g(k, v) where v not in ('A', 'B', 'C', 'D', '')) then
+      return jsonb_build_object('ok', false, 'reason', '경매 티어는 A, B, C, D 중 하나예요.');
+    end if;
+    update signups s set captain = (s.id::text in (select jsonb_array_elements_text(coalesce(p_arg -> 'captains', '[]')))) where s.auction_id = p_id;
+    update signups s set bench = not s.captain and (s.id::text in (select jsonb_array_elements_text(coalesce(p_arg -> 'exclude', '[]')))) where s.auction_id = p_id;
+    update signups s set grade = case when s.captain then null else nullif(g.v, '') end
+      from jsonb_each_text(coalesce(p_arg -> 'grades', '{}')) g(k, v) where s.auction_id = p_id and s.id::text = g.k;
+    perform _slog(p_id, '경매 준비 저장', (select format('팀장 %s명, 대기 %s명, 경매 티어 A %s · B %s · C %s · D %s명',
+        count(*) filter (where captain), count(*) filter (where bench),
+        count(*) filter (where grade = 'A'), count(*) filter (where grade = 'B'), count(*) filter (where grade = 'C'), count(*) filter (where grade = 'D'))
+      from signups where auction_id = p_id));
+    return jsonb_build_object('ok', true);
+  end if;
   if p_action not in ('load_signups', 'set_config', 'set_handicap', 'set_order') then
     return jsonb_build_object('ok', false, 'reason', '운영자 콘솔에서 할 수 없는 조작이에요.');
   end if;

@@ -125,6 +125,9 @@
   .prep-table th.sortable { cursor: pointer; user-select: none; }
   .prep-table th.sortable:hover, .prep-table th.sortable.on { color: var(--text); }
   .prep-tools { margin: 4px 0 0; }
+  .prep-table .rec { margin-left: 6px; font-size: 11px; color: var(--muted); opacity: .6; white-space: nowrap; }
+  .prep-table .rec.same { opacity: .3; }
+  .save-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .prep-tools a { color: var(--accent); }
   .danger { border-color: rgba(255,70,85,.5); }
   .danger h3 { color: #ff8c96; }
@@ -559,6 +562,17 @@ $("btnEditSave").onclick = async () => {
   if (r && r.ok) $("editModal").classList.remove("show");
 };
 
+// 경매 준비에서 바꿨지만 아직 서버에 저장하지 않은 것 (팀장·포함/대기·경매 티어)
+function prepUnsaved(d, sigs) {
+  if (!d.caps) return 0;
+  return sigs.filter(x => {
+    const cap = d.caps.includes(x.id);
+    return cap !== !!x.captain || (!cap && d.excluded.has(x.id) !== !!x.bench) || (!cap && (d.grades[x.id] || "") !== (x.grade || ""));
+  }).length;
+}
+addEventListener("beforeunload", ev => {
+  if (detail && detail.event && drafts[detail.event.id] && prepUnsaved(drafts[detail.event.id], detail.signups)) { ev.preventDefault(); ev.returnValue = ""; }
+});
 /* ---------- 경매 준비 (이 회차의 진행자·제작자): 명단·팀장·핸디캡 → 설정 → 팀장 링크 → 순서 ---------- */
 const drafts = {};   // 회차별로 아직 저장하지 않은 준비 내용 (6초마다 새로고침돼도 지워지지 않게)
 function draftFor(id) {
@@ -594,6 +608,10 @@ function renderPrep() {
   const teamsBy5 = Math.floor(sigs.length / 5), benchBy5 = sigs.length - teamsBy5 * 5;
   const playing = sigs.filter(x => !d.caps.includes(x.id) && !d.excluded.has(x.id));
   const gCnt = GRADES.map(g => playing.filter(x => d.grades[x.id] === g).length);
+  const recTeams = d.caps.length || Math.floor(sigs.length / 5);
+  const rec = recommendGrades(playing.map(x => ({ id: x.id, order: x.id, score: playerScore(x) })),
+    sigs.filter(x => !d.caps.includes(x.id) && d.excluded.has(x.id)).map(x => ({ id: x.id, order: x.id, score: playerScore(x) })), recTeams);
+  const unsaved = prepUnsaved(d, sigs);
   const graded = gCnt.some(Boolean), noGrade = playing.filter(x => !GRADES.includes(d.grades[x.id])).length;
   const members = window.members.filter(m => m.role !== "pending");
   const S = d.settings;
@@ -644,7 +662,7 @@ function renderPrep() {
       <div class="prep-bar">경매 티어 ${GRADES.map((g, i) => `${gradeBadge({ grade: g }, "sm")}<b>${gCnt[i]}</b>`).join(" ")}${graded && noGrade ? ` · 없음 <b>${noGrade}</b>` : ""}
         ${graded && (noGrade || gCnt.some(x => x !== d.caps.length)) ? `<span class="warn"> — 경매 선수 모두에게 티어를 주고, 티어마다 팀 수(${d.caps.length})만큼 있어야 해요</span>` : graded ? `<span style="color:var(--ok)"> — 팀마다 A·B·C·D 한 명씩</span>` : `<span style="color:var(--muted)"> — 아직 안 정했어요 (안 정하면 티어 없이 경매)</span>`}
         <button class="btn" id="btnGradeClear" ${dis || !graded ? "disabled" : ""} style="margin-left:8px">경매 티어 모두 비우기</button>
-        <div style="color:var(--muted);font-size:12px;margin-top:4px">경매 티어(A~D)는 진행자가 아래 표의 ‘경매 티어’ 칸에서 직접 골라요. 정렬을 ‘점수’로 바꾸면 고르기 편해요.</div></div>
+        <div style="color:var(--muted);font-size:12px;margin-top:4px">경매 티어(A~D)는 진행자가 아래 표의 ‘경매 티어’ 칸에서 직접 골라요. 옆에 흐리게 보이는 ‘추천’은 점수 순으로 팀 수(${recTeams})만큼씩 나눈 참고용이에요.</div></div>
       <div class="prep-bar">팀장 <b>${d.caps.length}</b>명 → 팀 <b>${d.caps.length}</b>개 · 경매 선수 <b>${nPlayers}</b>명 · 팀원 자리 ${slots}칸
         ${d.caps.length && nPlayers !== slots ? `<span class="warn"> — 선수가 자리보다 ${Math.abs(nPlayers - slots)}명 ${nPlayers < slots ? "적어요 (빈자리가 남아도 경매는 할 수 있어요)" : "많아요 (남는 선수는 팀에 못 들어가요)"}</span>` : ""}</div>
       <div class="toolbar prep-tools">
@@ -661,13 +679,15 @@ function renderPrep() {
             <td><input type="checkbox" data-inc ${inc ? "checked" : ""} ${no ? "disabled" : ""} ${dis}></td>
             <td><button class="star ${no ? "on" : ""}" data-cap ${dis}>${no ? `★ ${no}팀` : "★"}</button></td>
             <td>${no ? `<input type="number" data-hc min="0" step="${S.bidStep}" value="${d.handicaps[x.id] || 0}" ${dis}>` : ""}</td>
-            <td>${no ? `<span style="color:var(--muted);font-size:12px">팀장</span>` : `<select data-grade ${dis}><option value="">-</option>${GRADES.map(g => `<option ${d.grades[x.id] === g ? "selected" : ""}>${g}</option>`).join("")}</select>`}</td>
+            <td>${no ? `<span style="color:var(--muted);font-size:12px">팀장</span>` : `<select data-grade ${dis}><option value="">-</option>${GRADES.map(g => `<option ${d.grades[x.id] === g ? "selected" : ""}>${g}</option>`).join("")}</select>${rec[x.id] ? `<span class="rec ${rec[x.id] === d.grades[x.id] ? "same" : ""}" title="점수 순 추천 (참고용)">추천 ${rec[x.id]}</span>` : ""}`}</td>
             <td><b>${esc(x.nick)}</b>${!inc ? `<span class="bench-chip">대기</span>` : ""}</td><td>${esc(x.discord_name)}</td><td>${esc(x.peak)}</td><td>${esc(x.current)}</td>
             <td><span class="score">${playerScore(x).toFixed(1)}</span>${x.score != null ? `<div class="calc">직접 정함</div>` : ""}</td>
             <td>${isDone(x, "tier") && isDone(x, "score") ? `<span class="chip done">완료</span>` : `<span class="chip part">덜 됨</span>`}</td></tr>`; }).join("")
           || `<tr><td colspan="10" style="color:var(--muted);padding:20px;text-align:center">${sigs.length ? "조건에 맞는 사람이 없어요." : "아직 신청이 없어요."}</td></tr>`}</tbody>
       </table></div>
       <div style="color:var(--muted);font-size:12px">티어·점수는 ‘참가자’ 탭의 ‘고치기’에서 바꿔요(부계정은 점수 직접 입력). 경매 선수를 채운 뒤에 고쳐도 경매 화면에 바로 반영돼요.</div>
+      <div class="save-row"><button class="btn ${unsaved ? "gold" : ""}" id="btnPrepSave" ${dis}>저장</button>
+        <span class="${unsaved ? "warn" : ""}" style="font-size:12px;${unsaved ? "" : "color:var(--muted)"}">${unsaved ? `저장 안 된 변경 ${unsaved}건 (팀장·포함/대기·경매 티어)` : "팀장·포함/대기·경매 티어가 저장돼 있어요. 핸디캡은 경매 선수 채우기 때 저장돼요."}</span></div>
       <div><button class="btn primary" id="btnFill" ${!can || !setup || e.locked || !d.caps.length ? "disabled" : ""}>이 명단으로 경매 선수 채우기</button>
         ${st.players.length ? `<span style="color:var(--muted);font-size:13px;margin-left:8px">지금: 팀 ${st.teams.length}개 (${st.teams.map(t => `${esc(t.name)} ${t.points}P`).join(", ")}) · 경매 선수 ${st.queue.length}명</span>` : ""}</div>
     </div>
@@ -733,6 +753,8 @@ function renderPrep() {
     if (t.id === "btnFill") {
       const bad = d.caps.find(id => (d.handicaps[id] || 0) >= S.startPoints);
       if (bad !== undefined) return toast(`핸디캡은 시작 포인트(${S.startPoints}P)보다 작아야 해요.`);
+      if (graded && (noGrade || gCnt.some(x => x !== d.caps.length)))
+        return alert(`경매 티어는 팀 수(${d.caps.length})만큼씩 있어야 해요.\n\n지금: ${GRADES.map((g, i) => `${g} ${gCnt[i]}명`).join(" · ")}${noGrade ? ` · 티어 없음 ${noGrade}명` : ""}\n\n‘저장’은 그대로 저장돼요. 경매 선수 채우기는 티어를 맞춘 뒤에 눌러 주세요.`);
       if (st.players.length && !confirm("지금 경매 선수 명단을 이 명단으로 바꿀까요?")) return;
       const handicaps = {}; d.caps.forEach(id => { handicaps[id] = d.handicaps[id] || 0; });
       const r = await hostAct("load_signups", { captains: d.caps, exclude: [...d.excluded], handicaps, grades: d.grades });
@@ -747,6 +769,12 @@ function renderPrep() {
       toast(d.caps.length === sp.teams ? `${sp.teams}팀으로 맞추고 늦게 신청한 ${sp.bench.length}명을 대기로 뺐어요. 경매 티어(A~D)는 표에서 골라 주세요.`
         : `${sigs.length}명이면 ${sp.teams}팀이에요. 팀장(★)을 ${sp.teams}명으로 맞춘 뒤 다시 눌러 주세요. (지금 ${d.caps.length}명)`);
       return renderPrep();
+    }
+    if (t.id === "btnPrepSave") {
+      const grades = {}; sigs.forEach(x => { grades[x.id] = d.caps.includes(x.id) ? "" : d.grades[x.id] || ""; });
+      const r = await hostAct("save_prep", { captains: d.caps, exclude: [...d.excluded].filter(id => !d.caps.includes(id)), grades });
+      if (r && r.ok) toast(st.players.length ? "저장했어요. 경매 화면에 반영하려면 ‘이 명단으로 경매 선수 채우기’를 다시 눌러 주세요." : "저장했어요.");
+      return;
     }
     if (t.id === "btnGradeClear") { if (!confirm("모든 사람의 경매 티어(A~D)를 비울까요? (경매 선수 채우기를 눌러야 저장돼요)")) return; sigs.forEach(x => { d.grades[x.id] = ""; }); return renderPrep(); }
     if (t.id === "btnTierDef") { S.tierScores = { ...TIER_SCORE }; return renderPrep(); }
