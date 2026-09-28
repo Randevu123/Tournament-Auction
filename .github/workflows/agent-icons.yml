@@ -1,0 +1,39 @@
+name: Update agent icons
+# 발로란트 요원 아이콘을 받아 agents/ 폴더에 저장합니다 (새 요원이 나오면 Actions에서 "Run workflow"만 누르면 됨)
+# 출처: valorant-api.com (팬이 운영하는 비공식 API). 요원 그림의 권리는 Riot Games에 있습니다.
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: write
+jobs:
+  icons:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download icons
+        run: |
+          set -euo pipefail
+          curl -fsS "https://valorant-api.com/v1/agents?isPlayableCharacter=true&language=ko-KR" -o /tmp/agents.json
+          mkdir -p agents
+          # 같은 이름이 두 번 오면 하나만
+          jq -c '[.data[] | {uuid, name: .displayName, role: .role.displayName, icon: .displayIcon}] | unique_by(.name) | .[]' /tmp/agents.json > /tmp/list.jsonl
+          while read -r row; do
+            uuid=$(jq -r .uuid <<<"$row"); icon=$(jq -r .icon <<<"$row")
+            curl -fsS "$icon" -o "agents/$uuid.png"
+            echo "$(jq -r '.role + " | " + .name' <<<"$row") | $(stat -c %s "agents/$uuid.png") bytes"
+          done < /tmp/list.jsonl
+          jq -s 'map({name, role, file: ("agents/" + .uuid + ".png")}) | sort_by(.role, .name)' /tmp/list.jsonl > agents/agents.json
+          echo "agents: $(jq length agents/agents.json)"
+      - name: Save to the repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add agents
+          if git diff --cached --quiet; then echo "바뀐 아이콘이 없어요."; exit 0; fi
+          git commit -m "Update agent icons from valorant-api.com"
+          git push
+          # 이 작업이 올린 변경은 사이트 배포를 자동으로 부르지 않으므로 직접 부름
+          gh workflow run pages.yml --ref "${GITHUB_REF_NAME}"
