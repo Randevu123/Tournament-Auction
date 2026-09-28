@@ -476,3 +476,9 @@ a.home-card:hover { transform: translateY(-4px); border-color: var(--accent); bo
 .roster li .who > span:last-child { min-width: 0; }
 .flash-inner { max-width: 92vw; padding: 0 12px; }
 .flash-sub { overflow-wrap: anywhere; word-break: break-all; }
+
+.home-docs h3 { margin: 0 0 10px; font-size: 13px; letter-spacing: 3px; color: var(--muted); }
+.home-docs > div { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.home-docs a { display: grid; gap: 2px; padding: 12px 16px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); color: var(--text); text-decoration: none; font-weight: 900; }
+.home-docs a:hover { border-color: var(--accent); }
+.home-docs a span { color: var(--muted); font-size: 13px; font-weight: 400; }
