@@ -25,6 +25,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
+      # 파일 주소에 이번 배포 번호를 붙임 (?v=dev → ?v=커밋번호). 새 화면과 옛 공용 코드가 섞여 오류 나는 것을 막음
+      - name: Stamp asset versions
+        run: sed -i "s/?v=dev/?v=${GITHUB_SHA::8}/g" *.html && grep -o 'common.js?v=[a-z0-9]*' index.html
       - uses: actions/upload-pages-artifact@v5
         with:
           path: .

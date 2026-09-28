@@ -6,7 +6,7 @@
 <title>내전 경매 · 팀장</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="common.css?v=dev">
 <style>
   :root { --c: var(--accent); --bidbar-h: 150px; }
   body { padding-bottom: calc(var(--bidbar-h) + 16px); }
@@ -15,13 +15,16 @@
   .my-team { font-family: var(--num); font-size: 22px; color: var(--c); display: flex; align-items: center; gap: 8px; min-width: 0; }
   .my-team span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .wrap { max-width: 1180px; margin: 0 auto; padding: 14px 16px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
-  .col { display: grid; gap: 14px; min-width: 0; }
+  .col { display: grid; gap: 14px; min-width: 0; grid-template-columns: minmax(0, 1fr); }
+  .col > * { min-width: 0; }
+  .lot > * { min-width: 0; }
   .col-side { position: sticky; top: 14px; }
 
   /* 지금 경매 중인 선수 */
   .lot { background: linear-gradient(160deg, #1a1f30, #10131d); border: 1px solid var(--line); border-radius: 18px; padding: 18px; display: grid; gap: 12px; }
   .lot .p-top { margin: 0; }
-  .lot .p-name { font-size: clamp(28px, 7vw, 52px); }
+  .lot .p-name { font-size: calc(clamp(28px, 7vw, 52px) * var(--ns, 1)); }
+  .lot .p-top > div { min-width: 0; }
   .lot-bid { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; }
   .lot-bid .bid-amount { font-size: clamp(56px, 16vw, 96px); }
   .lot-bid .timer-num { font-size: clamp(36px, 10vw, 60px); }
@@ -35,15 +38,15 @@
   .mine { border-top: 5px solid var(--c); }
   .mine .row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
   .mine .team-points { font-size: 44px; }
-  .others { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-  .others li { display: grid; grid-template-columns: 10px 1fr auto auto; gap: 10px; align-items: center; padding: 8px 10px; background: var(--panel-2); border-radius: 8px; font-size: 14px; }
+  .others { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; grid-template-columns: minmax(0, 1fr); }
+  .others li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 10px; background: var(--panel-2); border-radius: 8px; font-size: 14px; }
   .others li .sw { width: 10px; height: 10px; border-radius: 3px; }
   .others li .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .others li .pt { font-family: var(--num); font-size: 18px; }
   .others li.lead { box-shadow: inset 0 0 0 2px var(--gold); }
-  .next-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .next-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; grid-template-columns: minmax(0, 1fr); }
   .next-list li { display: flex; gap: 8px; align-items: center; font-size: 13px; background: var(--panel-2); border-radius: 8px; padding: 5px 8px; }
-  .next-list li .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .next-list li .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* 입찰 버튼 줄 — 화면 아래에 늘 고정 */
   .bidbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: rgba(10,12,20,.96); border-top: 2px solid var(--c); padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); backdrop-filter: blur(8px); }
@@ -66,7 +69,7 @@
   .error-box p { color: var(--muted); line-height: 1.6; }
 
   @media (max-width: 900px) {
-    .wrap { grid-template-columns: 1fr; }
+    .wrap { grid-template-columns: minmax(0, 1fr); }
     .col-side { position: static; }
     .chat-list { height: 200px; }
     .lot-bid .timer { text-align: left; }
@@ -128,8 +131,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="config.js"></script>
-<script src="common.js"></script>
+<script src="config.js?v=dev"></script>
+<script src="common.js?v=dev"></script>
 <script>
 /* =====================================================================
    팀장 화면 — 자기 팀 입찰 버튼만 있음. 다른 팀으로는 입찰할 수 없음(서버가 열쇠로 확인)
@@ -219,7 +222,7 @@ function render(prev) {
       : lead.idx === ME ? `<span class="mine-lead">우리 팀이 최고가!</span>` : `<span style="color:${esc(lead.color)}">${esc(lead.name)} 최고가</span>`;
     $("lot").innerHTML = `
       <div class="card-label">NOW ON AUCTION</div>
-      <div class="p-top">${avatar(p, 96)}<div><div class="p-name">${gradeBadge(p, "lg")}${esc(p.name)}</div><span class="p-pos">${esc(p.pos)}</span><div class="p-agents">${agentChips(p, "lg", 24)}</div></div></div>
+      <div class="p-top">${avatar(p, 96)}<div><div class="p-name" style="--ns:${nameScale(p.name)}">${gradeBadge(p, "lg")}${esc(p.name)}</div><span class="p-pos">${esc(p.pos)}</span><div class="p-agents">${agentChips(p, "lg", 24)}</div></div></div>
       ${p.motto ? `<div class="p-motto">“${esc(p.motto)}”</div>` : ""}
       <div class="p-tiers">
         <div><small>최고 티어</small><b>${esc(p.peak)} <em>${tierPoints(p.peak)}점</em></b></div>

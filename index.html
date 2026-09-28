@@ -6,7 +6,7 @@
 <title>내전 경매 · 진행자</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="common.css?v=dev">
 </head>
 <body>
 
@@ -208,8 +208,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="config.js"></script>
-<script src="common.js"></script>
+<script src="config.js?v=dev"></script>
+<script src="common.js?v=dev"></script>
 <script>
 /* =====================================================================
    진행자 화면
@@ -671,6 +671,7 @@ function render(prev) {
   const p = s.players.find(x => x.id === s.current) || null;
   $("pPhoto").innerHTML = p ? avatar(p, 130) : "";
   $("pName").textContent = p ? p.name : (s.status === "done" ? "경매 종료" : "-");
+  $("pName").parentElement.style.setProperty("--ns", p ? nameScale(p.name) : 1);
   $("pGrade").innerHTML = p ? gradeBadge(p, "lg") : "";
   $("pPos").textContent = p ? p.pos : "-";
   $("pAgents").innerHTML = p ? agentChips(p, "lg", 26) : "";

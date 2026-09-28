@@ -1283,6 +1283,10 @@ declare s signups;
 begin
   if not _is_staff() then return _no(); end if;
   if _locked_id((select auction_id from signups where id = p_signup)) then return _lock_msg(); end if;
+  -- 이미 경매 선수로 올라간 사람을 지우면 경매에 "유령 선수"가 남으므로 막음
+  if exists (select 1 from players pl join signups sg on sg.id = p_signup and sg.auction_id = pl.auction_id where pl.signup_id = p_signup) then
+    return jsonb_build_object('ok', false, 'reason', '이미 경매 선수로 올라간 사람이에요. ‘경매 준비’ 탭에서 이 사람의 ‘포함’을 끄고 다시 채운 뒤 지워 주세요.');
+  end if;
   delete from signups where id = p_signup returning * into s;
   if s.id is not null then
     perform _slog(s.auction_id, '신청 지움', format('%s (%s) · %s / %s · %s', s.nick, s.discord_name, s.peak, s.current_tier, s.pos));

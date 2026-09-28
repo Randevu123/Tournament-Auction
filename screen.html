@@ -6,7 +6,7 @@
 <title>내전 경매 · 방송 화면</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="common.css?v=dev">
 <style>
   /* 방송 화면: 1920×1080 한 장을 창 크기에 맞춰 늘리고 줄임 (버튼 없음, 스크롤 없음) */
   html, body { width: 100%; height: 100%; overflow: hidden; cursor: none; }
@@ -45,10 +45,10 @@
   .pcard.enter .ph, .pcard.enter .info { animation: enter .6s cubic-bezier(.2,1.3,.4,1) both; }
   .pcard.enter .info { animation-delay: .08s; }
   @keyframes enter { 0% { opacity: 0; transform: translateX(-60px); } 100% { opacity: 1; transform: none; } }
-  .pname { font-family: var(--num); font-size: 84px; line-height: 1.05; word-break: break-all; text-shadow: 0 0 30px rgba(255,70,85,.35); }
+  .pname { font-family: var(--num); font-size: calc(84px * var(--ns, 1)); overflow-wrap: anywhere; line-height: 1.05; word-break: break-all; text-shadow: 0 0 30px rgba(255,70,85,.35); }
   .ppos { display: inline-block; margin-top: 10px; font-size: 26px; font-weight: 900; padding: 4px 16px; border-radius: 999px; background: rgba(255,255,255,.08); }
-  .pmotto { margin-top: 18px; font-size: 28px; color: #d9def0; font-style: italic; min-height: 38px; }
-  .ptiers { margin-top: 22px; display: grid; grid-template-columns: 1.25fr 1.25fr 1fr; gap: 10px; }
+  .pmotto { margin-top: 14px; font-size: 24px; color: #d9def0; font-style: italic; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .ptiers { margin-top: 16px; display: grid; grid-template-columns: 1.25fr 1.25fr 1fr; gap: 10px; }
   .ptiers div { background: rgba(255,255,255,.05); border-radius: 14px; padding: 12px 14px; }
   .ptiers small { display: block; font-size: 17px; color: var(--muted); }
   .ptiers b { font-family: var(--num); font-weight: 400; font-size: 30px; white-space: nowrap; }
@@ -135,7 +135,7 @@
 
   .pagents { margin-top: 14px; min-height: 0; }
   .pagents .agents { gap: 8px; }
-  .pagents .ag { font-size: 24px; padding: 4px 18px 4px 4px; gap: 10px; }
+  .pagents .ag { font-size: 20px; padding: 3px 14px 3px 3px; gap: 7px; }
   .pagents .ag:first-child { background: rgba(255,209,102,.28); }
 
   /* 순서 추첨 (진행자 화면에서 추첨하면 같은 연출이 여기에도 나옴) */
@@ -145,7 +145,7 @@
   .dwrap { display: grid; grid-template-columns: 640px 1fr; gap: 40px; min-height: 0; }
   .roul { align-self: start; display: grid; justify-items: center; gap: 18px; padding: 40px; border-radius: 28px; background: linear-gradient(160deg, #1a1f30, #10131d); border: 1px solid var(--line); }
   .roul .no { font-family: var(--num); font-size: 48px; color: var(--accent); }
-  .roul .nm { font-family: var(--num); font-size: 72px; text-align: center; word-break: break-all; line-height: 1.1; }
+  .roul .nm { font-family: var(--num); font-size: calc(72px * var(--ns, 1)); overflow-wrap: anywhere; text-align: center; word-break: break-all; line-height: 1.1; }
   .roul .sub { color: var(--muted); font-size: 28px; min-height: 40px; text-align: center; }
   .roul.locked .nm { color: var(--gold); text-shadow: 0 0 34px rgba(255,209,102,.55); animation: bump .35s ease; }
   .roul .av { border-radius: 24px; }
@@ -245,8 +245,8 @@
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
-<script src="config.js"></script>
-<script src="common.js"></script>
+<script src="config.js?v=dev"></script>
+<script src="common.js?v=dev"></script>
 <script>
 /* =====================================================================
    방송 화면 (OBS 브라우저 소스용)
@@ -325,7 +325,7 @@ function showRoul(p, locked, no) {
   $("roul").classList.toggle("locked", locked);
   $("dNo").textContent = `${no}번`;
   $("dPhoto").innerHTML = avatar(p, 220);
-  $("dName").textContent = p.name;
+  $("dName").textContent = p.name; $("dName").style.setProperty("--ns", nameScale(p.name));
   $("dSub").innerHTML = locked ? `${gradeBadge(p)}${esc(p.pos)} · ${esc(p.peak)} / ${esc(p.current)} ${agentChips(p, "lg", 30)}` : "";
 }
 function addDrawn(i, p) {
@@ -403,9 +403,10 @@ function renderLot(s) {
     bumpEl($("pcard"), "enter");
   } else if (p && !$("pPhoto").querySelector("img") && p.photo) $("pPhoto").innerHTML = avatar(p, 260);
   $("pName").textContent = p ? p.name : "-";
+  $("pName").parentElement.style.setProperty("--ns", p ? nameScale(p.name) : 1);
   $("pGrade").innerHTML = p ? gradeBadge(p, "xl") : "";
   $("pPos").textContent = p ? p.pos : "-";
-  $("pAgents").innerHTML = p ? agentChips(p, "", 44) : "";
+  $("pAgents").innerHTML = p ? agentChips(p, "", 36) : "";
   $("pMotto").textContent = p && p.motto ? `“${p.motto}”` : "";
   $("pPeak").textContent = p ? p.peak : "-";
   $("pCur").textContent = p ? p.current : "-";

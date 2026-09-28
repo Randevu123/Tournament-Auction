@@ -118,6 +118,11 @@ function mountAgentPicker(root, selected, onChange) {
   onAgentIcons(draw);
   return { get: () => picked.slice() };
 }
+// 이름이 길수록 글자를 작게 (띄어쓰기 없는 긴 영어 닉네임이 카드를 밀어내지 않게). 한글·전각은 1, 영문·숫자는 0.62칸으로 셈
+function nameScale(name) {
+  const w = [...String(name || "")].reduce((a, ch) => a + (/[\u0000-\u024f]/.test(ch) ? (/[A-Z@MWmw]/.test(ch) ? 0.78 : 0.6) : 1), 0);
+  return w <= 7 ? 1 : Math.max(0.42, 7 / w);
+}
 function agentsOf(p) { return Array.isArray(p && p.agents) ? p.agents : []; }
 // 주 요원 칩 (없으면 빈 문자열)
 function agentChips(p, cls = "", icon = 20) {
@@ -431,7 +436,7 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresen
   const sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  let state = null, version = 0, offset = 0, bestRtt = Infinity;
+  let state = null, version = 0, offset = 0, bestRtt = Infinity, chStatus = "", failed = false;
   let photos = {}, photosVersion = -1, photosLoading = false;
   const seenChat = new Set(); let maxChat = 0;
 
@@ -472,7 +477,8 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresen
       const t0 = Date.now();
       const s = await rpc("get_state", { p_id: id, p_key: key });
       apply(s, t0, Date.now());
-    } catch (e) { onConn && onConn("error"); }
+      if (failed) { failed = false; onConn && onConn(chStatus); }   // 다시 붙으면 연결 표시도 되돌림
+    } catch (e) { failed = true; onConn && onConn("error"); }
     inflight = false;
     if (again) { again = false; refresh(); }
   }
@@ -518,7 +524,8 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onPresen
     .on("broadcast", { event: "show" }, ({ payload }) => onEvent.show && onEvent.show(payload || {}))
     .on("presence", { event: "sync" }, () => onPresence && onPresence(channel.presenceState()))
     .subscribe(status => {
-      onConn && onConn(status);
+      chStatus = status;
+      if (!failed) onConn && onConn(status);
       if (status === "SUBSCRIBED") {
         channel.track(presenceInfo || {});
         refresh(); refreshChat();

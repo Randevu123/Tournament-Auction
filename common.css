@@ -83,7 +83,7 @@
   .card-label { font-size: 12px; letter-spacing: 3px; color: var(--accent); font-weight: 900; }
   .p-top { display: flex; gap: 18px; align-items: center; margin: 10px 0 12px; }
   .p-top .av { border: 3px solid rgba(255,255,255,.12); box-shadow: 0 10px 30px rgba(0,0,0,.4); }
-  .p-name { font-family: var(--num); font-size: clamp(34px, 4.2vw, 64px); line-height: 1.05; word-break: break-all; }
+  .p-name { font-family: var(--num); font-size: calc(clamp(34px, 4.2vw, 64px) * var(--ns, 1)); line-height: 1.05; word-break: break-all; overflow-wrap: anywhere; min-width: 0; }
   .p-pos { display: inline-block; margin-top: 8px; padding: 4px 12px; border-radius: 999px; background: rgba(255,70,85,.15); color: #ff8c96; font-weight: 700; font-size: 14px; }
   .p-motto { margin: 4px 0 0; padding: 10px 14px; border-left: 3px solid var(--gold); background: rgba(255,209,102,.06); border-radius: 0 10px 10px 0; font-size: 16px; min-height: 20px; }
   .p-motto:empty { display: none; }
@@ -465,3 +465,14 @@ a.home-card:hover { transform: translateY(-4px); border-color: var(--accent); bo
 .teams.many .team-name span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .teams.many .team-points { font-size: 32px; }
 .teams.many .team-max { font-size: 11px; }
+
+/* 팀 카드가 좁아져도 옆으로 넘치지 않게 (8팀 · 노트북) */
+.teams .team { min-width: 0; }
+.roster li { min-width: 0; }
+.roster li .who { flex: 1 1 auto; }
+.teams.many .roster li { font-size: 12px; padding: 4px 6px; }
+.teams.many .team-score b { font-size: 16px; }
+.roster { grid-template-columns: minmax(0, 1fr); }
+.roster li .who > span:last-child { min-width: 0; }
+.flash-inner { max-width: 92vw; padding: 0 12px; }
+.flash-sub { overflow-wrap: anywhere; word-break: break-all; }
