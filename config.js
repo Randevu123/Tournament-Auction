@@ -4,4 +4,7 @@
 window.AUCTION_CONFIG = {
   supabaseUrl: "https://umfusewgrukutppexbyz.supabase.co",
   supabaseKey: "sb_publishable_3B9oOuL0lN_XNIkNAl6Buw_3QZU3rZ0",
+  // 이 사이트를 열어도 되는 주소. 여기 없는 주소에서 열면 바나나 그림만 보이고 서버에 연결하지 않아요.
+  // 다른 GitHub으로 옮기면 새 주소로 바꾸세요 (예: "새아이디.github.io"). 비워 두면 [] 잠그지 않아요.
+  allowedHosts: ["randevu123.github.io"],
 };

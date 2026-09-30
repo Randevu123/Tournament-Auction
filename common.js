@@ -2,6 +2,38 @@
    진행자 화면(index.html)과 팀장 화면(team.html)이 함께 쓰는 코드
    ===================================================================== */
 
+/* [0] 주소 잠금: config.js의 allowedHosts에 없는 주소에서 열면 서버에 연결하지 않고 픽셀 바나나 그림만 보여 줌
+   (사이트를 다른 GitHub으로 옮기면 config.js의 allowedHosts에 새 주소를 넣으세요. 비워 두면 잠그지 않음) */
+(function siteLock() {
+  const cfg = window.AUCTION_CONFIG || {};
+  const allowed = Array.isArray(cfg.allowedHosts) ? cfg.allowedHosts.map(h => String(h).toLowerCase()) : [];
+  const host = location.hostname.toLowerCase();
+  if (!allowed.length || allowed.includes(host) || host === "localhost" || host === "127.0.0.1") return;
+  window.SITE_LOCKED = true;
+  window.AUCTION_CONFIG = null;   // 서버(Supabase)에 연결하지 않음
+  const M = ["..............BB..", ".............BGB..", ".............KYK..", "............KYYK..", "............KYSK..",
+    "...........KYYSK..", "..........KLYYSK..", ".........KLYYYSK..", "........KLYYYSK...", ".......KLYYYYSK...",
+    ".....KKLYYYYSK....", "...KKLLYYYYSSK....", ".KKLLYYYYYSSK.....", "KBLYYYYYYSSKK.....", ".KKSSSSSSKK.......", "...KKKKKK........."];
+  const C = { K: "#3a2408", Y: "#ffd93b", L: "#fff3a6", S: "#e8a317", B: "#6b4413", G: "#7cb342" };
+  let px = "";
+  M.forEach((row, y) => [...row].forEach((ch, x) => { if (C[ch]) px += `<rect x="${x}" y="${y}" width="1" height="1" fill="${C[ch]}"/>`; }));
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 16" shape-rendering="crispEdges">${px}</svg>`;
+  const css = document.createElement("style");
+  css.textContent = `html, body { margin: 0 !important; height: 100% !important; overflow: hidden !important; background: #0b0d14 !important; }
+    body > *:not(#siteLock) { display: none !important; }
+    #siteLock { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; background: #0b0d14; }
+    #siteLock img { width: min(70vmin, 520px); image-rendering: pixelated; }`;
+  document.head.appendChild(css);
+  const put = () => {
+    if (document.getElementById("siteLock")) return;
+    const box = document.createElement("div"); box.id = "siteLock";
+    box.innerHTML = `<img alt="" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}">`;
+    document.body.appendChild(box);
+  };
+  if (document.body) put(); else document.addEventListener("DOMContentLoaded", put);
+  document.title = "\u00a0";
+})();
+
 /* [1] 바꾸기 쉬운 숫자 모음 — 새 경매를 만들 때 이 값이 서버에 저장됩니다
    (이미 만든 경매의 규칙은 바뀌지 않아요. 바꾼 뒤 새 경매를 만드세요) */
 const CONFIG = {

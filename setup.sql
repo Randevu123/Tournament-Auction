@@ -710,6 +710,8 @@ begin
     elsif exists (select 1 from jsonb_each_text(coalesce(p_arg -> 'grades', '{}')) g(k, v) where v not in ('A', 'B', 'C', 'D', '')) then
       v_reason := '경매 티어는 A, B, C, D 중 하나예요.';
     else
+     -- 티어 저장과 검사를 한 블록에서: 검사에 걸리면 이 블록의 저장도 되돌림 (거절됐는데 티어만 바뀌는 일이 없게)
+     begin
       -- 경매 티어: 새로 정한 값을 신청 명단에 저장 (대기 인원 포함)
       update signups s set grade = nullif(g.v, '') from jsonb_each_text(coalesce(p_arg -> 'grades', '{}')) g(k, v)
        where s.auction_id = p_id and s.id = g.k::bigint;
@@ -724,7 +726,10 @@ begin
         v_reason := case when _cfg_int(a, 'teamSize') <> 5 then '경매 티어(A~D)를 쓰려면 팀 인원이 5명(팀장 포함)이어야 해요.'
           when r.graded <> r.total then format('경매 선수 중 %s명이 경매 티어가 없어요.', r.total - r.graded)
           else format('경매 티어는 팀 수(%s)만큼씩 있어야 해요. 지금 A %s · B %s · C %s · D %s명', v_n, r.na, r.nb, r.nc, r.nd) end;
+        raise exception using errcode = 'P0A01', message = v_reason;
       end if;
+     exception when sqlstate 'P0A01' then v_reason := sqlerrm;   -- 위 저장을 되돌리고 거절 이유만 남김
+     end;
     end if;
     if v_reason is null and p_action = 'load_signups' and a.status = 'setup' then
       update signups set bench = (id::text in (select jsonb_array_elements_text(coalesce(p_arg -> 'exclude', '[]')))) where auction_id = p_id;
@@ -1439,12 +1444,27 @@ begin
 end $$;
 
 -- 운영자 콘솔에서 경매 준비하기 (진행자·제작자만). 진행자 화면과 같은 규칙(host_action)을 그대로 씀
+-- 경매 준비의 현재 상태를 한 줄로 (팀장·대기·경매 티어가 있는 신청만). 콘솔이 같은 방식으로 계산해 보내서 비교함
+create or replace function public._prep_sig(p_id uuid) returns text
+language sql stable security definer set search_path = public as $$
+  select coalesce(string_agg(s.id::text || ':' || case when s.captain then '1' else '0' end
+           || case when s.bench and not s.captain then '1' else '0' end
+           || case when s.captain then '-' else coalesce(s.grade, '-') end, ',' order by s.id), '')
+  from signups s where s.auction_id = p_id and (s.captain or s.bench or s.grade is not null)
+$$;
+revoke execute on function public._prep_sig(uuid) from public, anon, authenticated;
+
 create or replace function public.console_host_action(p_id uuid, p_action text, p_arg jsonb default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare v_key text; r jsonb;
 begin
   if not _can_host(p_id) then return jsonb_build_object('ok', false, 'reason', '이 회차의 진행자나 제작자만 경매 준비를 할 수 있어요.'); end if;
   if _locked_id(p_id) then return _lock_msg(); end if;
+  -- 다른 운영자가 먼저 경매 준비를 바꿨으면 덮어쓰지 않음 (콘솔이 불러온 때의 서명 base_sig와 비교)
+  if p_action in ('save_prep', 'load_signups') and p_arg ? 'base_sig' and (p_arg ->> 'base_sig') is distinct from _prep_sig(p_id) then
+    return jsonb_build_object('ok', false, 'conflict', true,
+      'reason', '다른 운영자가 방금 경매 준비(팀장·대기·경매 티어)를 바꿨어요. ‘다시 불러오기’로 새 내용을 확인한 뒤 다시 해 주세요.');
+  end if;
   -- 경매 준비 저장 (선수 채우기 없이): arg = {captains: [신청 번호], exclude: [대기 신청 번호], grades: {"신청 번호": "A"|""}}
   if p_action = 'save_prep' then
     if (select status from auctions where id = p_id) <> 'setup' then
