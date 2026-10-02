@@ -47,6 +47,19 @@
   .next-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; grid-template-columns: minmax(0, 1fr); }
   .next-list li { display: flex; gap: 8px; align-items: center; font-size: 13px; background: var(--panel-2); border-radius: 8px; padding: 5px 8px; }
   .next-list li .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* 전체 경매 순서: 끝난 선수는 흐리게(간 팀·가격), 지금 선수는 강조, 남은 선수는 몇 번째 뒤인지 */
+  .order-head { display: flex; align-items: baseline; gap: 8px; }
+  .order-head span { font-size: 12px; color: var(--muted); font-weight: 400; letter-spacing: 0; }
+  .full-order { max-height: 420px; overflow-y: auto; position: relative; }
+  .full-order li .no { color: var(--muted); width: 22px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+  .full-order li.done { opacity: .5; }
+  .full-order li.now { outline: 2px solid var(--accent); background: rgba(255,70,85,.12); }
+  .full-order li .st { flex: none; font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 4px; max-width: 45%; min-width: 0; }
+  .full-order li .st .tn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .full-order li .st .sw { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .full-order li .st b { color: var(--gold); font-weight: 700; }
+  .full-order li .now-tag { color: var(--accent); font-weight: 900; }
+  .full-order li .uns { color: var(--warn); font-size: 11px; flex: none; }
 
   /* 입찰 버튼 줄 — 화면 아래에 늘 고정 */
   .bidbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: rgba(10,12,20,.96); border-top: 2px solid var(--c); padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); backdrop-filter: blur(8px); }
@@ -108,8 +121,8 @@
       <ul class="others" id="others"></ul>
     </section>
     <section class="panel">
-      <h3>다음 순서</h3>
-      <ol class="next-list" id="nextList"></ol>
+      <h3 class="order-head">경매 순서 <span id="orderCount"></span></h3>
+      <ol class="next-list full-order" id="nextList"></ol>
     </section>
   </div>
   <div class="col col-side" id="side"></div>
@@ -256,13 +269,43 @@ function render(prev) {
     return `<li class="${s.bid_team === t.idx && s.status === "running" ? "lead" : ""}"><span class="sw" style="background:${esc(t.color)}"></span><span class="nm">${esc(t.name)}</span><span style="color:var(--muted);font-size:12px">빈자리 ${o}</span><span class="pt">${t.points}P</span></li>`;
   }).join("");
 
-  // 다음 순서
-  const next = s.queue.slice(0, 6).map(id => s.players.find(x => x.id === id)).filter(Boolean);
-  $("nextList").innerHTML = s.status === "setup" ? `<li><span class="nm" style="color:var(--muted)">순서 추첨 전</span></li>`
-    : next.length ? next.map((q, i) => `<li><span style="color:var(--muted);width:16px">${i + 1}</span>${avatar(q, 22)}<span class="nm">${gradeBadge(q, "sm")}${esc(q.name)}</span><span>${playerScore(q).toFixed(1)}</span></li>`).join("")
-    : `<li><span class="nm" style="color:var(--muted)">남은 선수 없음</span></li>`;
+  renderOrder(s);
 
   renderBidbar();
+}
+
+// 전체 경매 순서 (추첨한 순서 그대로). 끝난 선수는 간 팀과 가격, 지금 선수는 강조, 남은 선수는 몇 번째 뒤인지
+let orderNow = null;
+function renderOrder(s) {
+  const list = $("nextList");
+  if (s.status === "setup") { $("orderCount").textContent = ""; list.innerHTML = `<li><span class="nm" style="color:var(--muted)">순서 추첨 전</span></li>`; return; }
+  // 예전에 만든 경매(전체 순서 기록이 없음)는 지금 선수 + 남은 순서만
+  const ids = s.draw_order && s.draw_order.length ? s.draw_order : (s.current !== null ? [s.current] : []).concat(s.queue.filter(id => id !== s.current));
+  const rows = ids.map(id => s.players.find(x => x.id === id)).filter(Boolean);
+  const done = rows.filter(p => p.team !== null).length;
+  $("orderCount").textContent = `끝남 ${done} / 전체 ${rows.length}명`;
+  list.innerHTML = rows.map((p, i) => {
+    let cls = "", st;
+    if (p.team !== null) {
+      const t = s.teams[p.team] || {};
+      cls = "done";
+      st = `<span class="sw" style="background:${esc(t.color || "#888")}"></span><span class="tn">${esc(t.name || "")}</span>${
+        p.how === "random" ? "무작위" : p.how === "auto" ? "자동" : `<b>${p.price}P</b>`}`;
+    } else if (p.id === s.current && s.status !== "done") {
+      cls = "now"; st = `<span class="now-tag">${s.status === "result" ? "결과 발표" : "지금 경매"}</span>`;
+    } else {
+      const q = s.queue.filter(id => id !== s.current).indexOf(p.id);
+      st = q >= 0 ? (q === 0 ? "다음" : `${q + 1}번째 뒤`) : "팀 없음";
+    }
+    return `<li class="${cls}" data-pid="${p.id}"><span class="no">${i + 1}</span>${avatar(p, 22)}<span class="nm">${gradeBadge(p, "sm")}${esc(p.name)}</span>${
+      p.unsold && p.team === null ? `<span class="uns">유찰 ${p.unsold}</span>` : ""}<span class="st">${st}</span></li>`;
+  }).join("") || `<li><span class="nm" style="color:var(--muted)">선수 없음</span></li>`;
+  // 지금 선수가 바뀌면 목록을 그 근처로 스크롤 (목록 안에서만)
+  if (s.current !== orderNow) {
+    orderNow = s.current;
+    const li = list.querySelector("li.now");
+    if (li) list.scrollTop = Math.max(0, li.offsetTop - 60);
+  }
 }
 
 // 입찰 버튼 켜기/끄기 — 다른 팀 버튼은 아예 없음

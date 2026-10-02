@@ -145,6 +145,7 @@ alter table public.players add column if not exists agents text[] not null defau
 alter table public.signups add column if not exists grade text check (grade in ('A', 'B', 'C', 'D'));
 alter table public.signups add column if not exists bench boolean not null default false;
 alter table public.players add column if not exists grade text check (grade in ('A', 'B', 'C', 'D'));
+alter table public.auctions add column if not exists draw_order int[];   -- 추첨으로 정한 경매 순서 전체 (팀장 화면의 전체 순서 표시용, 진행 중에도 그대로)
 alter table public.auctions add column if not exists chat_epoch int not null default 0;   -- 채팅을 비울 때마다 1씩 늘어남 (화면들이 보고 채팅 창을 비움)
 alter table public.auctions add column if not exists undo jsonb;                         -- 결과 되돌리기용: 결과마다 그 직전 상태 (최근 30개, 쌓임)
 update public.auctions set undo = jsonb_build_array(undo) where jsonb_typeof(undo) = 'object';   -- 예전(하나만) 형식을 목록으로
@@ -270,7 +271,7 @@ language sql stable security definer set search_path = public as $$
     'ends_at', (extract(epoch from a.ends_at) * 1000)::bigint,
     'next_at', (extract(epoch from a.next_at) * 1000)::bigint,
     'paused_left_ms', a.paused_left_ms,
-    'queue', to_jsonb(a.queue), 'auto_start', a.auto_start, 'last_result', a.last_result,
+    'queue', to_jsonb(a.queue), 'draw_order', to_jsonb(a.draw_order), 'auto_start', a.auto_start, 'last_result', a.last_result,
     'players_version', a.players_version, 'version', a.version,
     'server_now', (extract(epoch from clock_timestamp()) * 1000)::bigint,
     'teams', (select coalesce(jsonb_agg(jsonb_build_object('idx', t.idx, 'name', t.name, 'color', t.color, 'points', t.points, 'handicap', t.handicap) order by t.idx), '[]')
@@ -321,7 +322,7 @@ begin
     update players set team_idx = v_idx, price = 0, how = 'captain' where auction_id = p_id and id = r.id;
     v_idx := v_idx + 1;
   end loop;
-  update auctions set queue = (select coalesce(array_agg(id order by id), '{}') from players where auction_id = p_id and not captain)
+  update auctions set queue = (select coalesce(array_agg(id order by id), '{}') from players where auction_id = p_id and not captain), draw_order = null
   where id = p_id;
 end $$;
 
@@ -672,7 +673,7 @@ begin
        or (select array_agg(x order by x) from unnest(v_ids) x) <> v_pool then
       v_reason := '순서 목록이 선수 명단과 맞지 않아요.';
     else
-      update auctions set queue = v_ids where id = p_id;
+      update auctions set queue = v_ids, draw_order = v_ids where id = p_id;
       perform _log(p_id, '', format('경매 순서 추첨 완료 — 1번 %s', (select name from players where auction_id = p_id and id = v_ids[1])));
       perform _next(p_id);
     end if;
@@ -782,7 +783,7 @@ begin
       end loop;
       update signups set captain = (id::text in (select jsonb_array_elements_text(p_arg -> 'captains'))) where auction_id = p_id;
       update auctions set queue = (select coalesce(array_agg(id order by id), '{}') from players where auction_id = p_id and not captain),
-             players_version = players_version + 1 where id = p_id;
+             draw_order = null, players_version = players_version + 1 where id = p_id;
       perform _log(p_id, '', format('신청 명단으로 선수를 채웠습니다 — 팀장 %s명, 경매 선수 %s명', v_n, i - v_n));
     end if;
 
@@ -877,7 +878,7 @@ begin
     update teams set points = _cfg_int(a, 'startPoints') - handicap where auction_id = p_id;
     update players set unsold = 0, team_idx = null, price = null, how = null where auction_id = p_id and not captain;
     update auctions set status = 'setup', current_player = null, bid_amount = 0, bid_team = null, ends_at = null,
-           paused_left_ms = null, next_at = null, last_result = null, undo = null,
+           paused_left_ms = null, next_at = null, last_result = null, undo = null, draw_order = null,
            queue = (select coalesce(array_agg(id order by id), '{}') from players where auction_id = p_id and not captain)
      where id = p_id;
     perform _log(p_id, '', '처음부터 다시 — 경매 결과를 지웠습니다.');
