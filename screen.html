@@ -308,7 +308,7 @@ async function boot() {
   $("chatc").parentElement.classList.toggle("nochat", !SHOW_CHAT);
   $("standby").classList.toggle("withchat", SHOW_CHAT);
   renderChat();
-  net = connect({ id, key, presenceKey: "screen", presenceInfo: { role: "screen" }, chat: SHOW_CHAT, onState, onChat, onChatUpdate, onConn: setConn,
+  net = connect({ id, key, presenceKey: "screen", presenceInfo: { role: "screen" }, chat: SHOW_CHAT, onState, onChat, onChatUpdate, onChatClear: () => { chatMsgs = []; renderChat(); }, onConn: setConn,
     onEvent: { show: onShow } });
 }
 

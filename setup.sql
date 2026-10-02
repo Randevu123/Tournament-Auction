@@ -145,6 +145,7 @@ alter table public.players add column if not exists agents text[] not null defau
 alter table public.signups add column if not exists grade text check (grade in ('A', 'B', 'C', 'D'));
 alter table public.signups add column if not exists bench boolean not null default false;
 alter table public.players add column if not exists grade text check (grade in ('A', 'B', 'C', 'D'));
+alter table public.auctions add column if not exists chat_epoch int not null default 0;   -- 채팅을 비울 때마다 1씩 늘어남 (화면들이 보고 채팅 창을 비움)
 alter table public.auctions add column if not exists undo jsonb;                         -- 결과 되돌리기용: 결과마다 그 직전 상태 (최근 30개, 쌓임)
 update public.auctions set undo = jsonb_build_array(undo) where jsonb_typeof(undo) = 'object';   -- 예전(하나만) 형식을 목록으로
 alter table public.signups add column if not exists motto text not null default '';       -- 신청할 때 적는 각오 한마디
@@ -282,6 +283,7 @@ language sql stable security definer set search_path = public as $$
                   'dc_avatar', (select s.discord_avatar from signups s where s.id = p.signup_id and s.show_avatar)) order by p.id), '[]')
                 from players p where p.auction_id = a.id),
     'title', a.title, 'locked', _locked(a),
+    'chat_epoch', a.chat_epoch,
     'undo_count', case when jsonb_typeof(a.undo) = 'array' then jsonb_array_length(a.undo) else 0 end,
     'undo_player', case when jsonb_typeof(a.undo) = 'array' then (a.undo -> -1 ->> 'player')::int end,
     'can_undo', (jsonb_typeof(a.undo) = 'array' and jsonb_array_length(a.undo) > 0 and a.status <> 'setup'),
@@ -543,6 +545,20 @@ begin
   insert into chat (auction_id, sender, color, body) values (p_id, v_name, v_color, v_body) returning * into v_row;
   return jsonb_build_object('ok', true, 'msg', jsonb_build_object('id', v_row.id, 'sender', v_row.sender, 'color', v_row.color, 'hidden', false,
            'body', v_row.body, 'at', (extract(epoch from v_row.created_at) * 1000)::bigint));
+end $$;
+
+-- 채팅 비우기 (진행자 화면 링크만): 이 경매의 채팅을 모두 지움. 팀장·방송 화면은 chat_epoch가 바뀐 걸 보고 채팅 창을 비움
+create or replace function public.clear_chat(p_id uuid, p_key text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v_n int;
+begin
+  if (select role from _auth(p_id, p_key)) is distinct from 'host' then return jsonb_build_object('ok', false, 'reason', '진행자만 채팅을 비울 수 있어요.'); end if;
+  delete from chat where auction_id = p_id;
+  get diagnostics v_n = row_count;
+  update auctions set chat_epoch = chat_epoch + 1 where id = p_id;
+  perform _log(p_id, '', format('채팅을 비웠습니다 (메시지 %s개)', v_n));
+  perform _bump(p_id);
+  return jsonb_build_object('ok', true, 'cleared', v_n, 'state', _state(p_id));
 end $$;
 
 -- 채팅 메시지를 방송 화면에서 숨기기 / 다시 보이기 (진행자만)
@@ -886,12 +902,12 @@ revoke execute on function public._cfg_int(public.auctions, text), public._auth(
 
 revoke execute on function public.create_auction(jsonb, jsonb), public.whoami(uuid, text), public.get_links(uuid, text),
   public.get_state(uuid, text), public.get_photos(uuid, text), public.get_chat(uuid, text, bigint),
-  public.send_chat(uuid, text, text), public.hide_chat(uuid, text, bigint, boolean), public.place_bid(uuid, text, int), public.tick(uuid, text),
+  public.send_chat(uuid, text, text), public.hide_chat(uuid, text, bigint, boolean), public.clear_chat(uuid, text), public.place_bid(uuid, text, int), public.tick(uuid, text),
   public.host_action(uuid, text, text, jsonb)
   from public;
 grant execute on function public.create_auction(jsonb, jsonb), public.whoami(uuid, text), public.get_links(uuid, text),
   public.get_state(uuid, text), public.get_photos(uuid, text), public.get_chat(uuid, text, bigint),
-  public.send_chat(uuid, text, text), public.hide_chat(uuid, text, bigint, boolean), public.place_bid(uuid, text, int), public.tick(uuid, text),
+  public.send_chat(uuid, text, text), public.hide_chat(uuid, text, bigint, boolean), public.clear_chat(uuid, text), public.place_bid(uuid, text, int), public.tick(uuid, text),
   public.host_action(uuid, text, text, jsonb)
   to anon, authenticated;
 

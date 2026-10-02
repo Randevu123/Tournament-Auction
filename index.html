@@ -262,10 +262,10 @@ async function boot() {
   let chat = null;
   net = connect({
     id, key, presenceKey: "host", presenceInfo: { role: "host" },
-    onState, onChat: msgs => chat && chat.add(msgs), onChatUpdate: m => chat && chat.update(m), onConn: setConn,
+    onState, onChat: msgs => chat && chat.add(msgs), onChatUpdate: m => chat && chat.update(m), onChatClear: () => chat && chat.clear(), onConn: setConn,
     onPresence: st => { online = new Set(Object.keys(st)); if (S) render(); },
   });
-  chat = mountChat($("chat"), net, { storeKey: "valo-chat-host", canHide: true });
+  chat = mountChat($("chat"), net, { storeKey: "valo-chat-host", canHide: true, canClear: true });
   startSignups();
   if (new URLSearchParams(location.search).get("new") === "1") {
     history.replaceState(null, "", pageUrl("index.html", id, key));

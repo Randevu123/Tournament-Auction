@@ -556,14 +556,14 @@ function isConfigured() {
    - 조작(입찰, 시작 등)은 서버 함수로 보내고, 서버가 순서대로 하나씩 처리합니다.
    - 처리 뒤 "바뀌었어요" 신호를 실시간 채널로 보내면, 다른 화면이 새 상태를 받아 옵니다.
    - 신호를 놓쳐도 4초마다 한 번씩 스스로 확인하므로, 새로고침·끊김 뒤에도 따라잡습니다. */
-function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onChatUpdate, onPresence, onConn, chat = true, onEvent = {} }) {
+function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onChatUpdate, onChatClear, onPresence, onConn, chat = true, onEvent = {} }) {
   const cfg = window.AUCTION_CONFIG;
   const sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   let state = null, version = 0, offset = 0, bestRtt = Infinity, chStatus = "", failed = false;
   let photos = {}, photosVersion = -1, photosLoading = false;
-  const seenChat = new Map(); let maxChat = 0;   // 메시지 번호 → 받은 메시지
+  const seenChat = new Map(); let maxChat = 0, chatEpoch = null;   // 메시지 번호 → 받은 메시지, 채팅 비운 횟수
 
   async function rpc(fn, args) {
     const { data, error } = await sb.rpc(fn, args);
@@ -577,6 +577,11 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onChatUp
     if (rtt <= bestRtt * 1.5) { offset = s.server_now - (t0 + t1) / 2; bestRtt = Math.min(bestRtt, rtt); }
     if (s.version < version) return;           // 늦게 도착한 옛날 상태는 버림
     version = s.version;
+    // 진행자가 채팅을 비웠으면(chat_epoch가 바뀜) 받아 둔 채팅을 모두 지움
+    if (chatEpoch !== null && s.chat_epoch !== undefined && s.chat_epoch !== chatEpoch) {
+      seenChat.clear(); maxChat = 0; onChatClear && onChatClear(); refreshChat();
+    }
+    if (s.chat_epoch !== undefined) chatEpoch = s.chat_epoch;
     if (s.players_version !== photosVersion) loadPhotos(s.players_version);
     s.players.forEach(p => { p.photo = photos[p.id] || ""; });
     state = s;
@@ -636,7 +641,8 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onChatUp
   }
   async function refreshChat() {
     if (!chat) return;                         // chat: false면 채팅을 읽지 않음
-    try { addChat(await rpc("get_chat", { p_id: id, p_key: key, p_after: Math.max(0, maxChat - 30) })); } catch (e) { /* 다음에 */ }
+    const ep = chatEpoch;   // 받는 사이에 채팅을 비웠으면 그 결과(지운 메시지)는 버림
+    try { const list = await rpc("get_chat", { p_id: id, p_key: key, p_after: Math.max(0, maxChat - 30) }); if (ep === chatEpoch) addChat(list); } catch (e) { /* 다음에 */ }
   }
   async function sendChat(body) {
     const r = await act("send_chat", { p_body: body });
@@ -644,6 +650,12 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onChatUp
     if (!r.ok) { toast(r.reason); return false; }
     addChat([r.msg]);
     channel.send({ type: "broadcast", event: "chat", payload: r.msg });
+    return true;
+  }
+  async function clearChat() {
+    const r = await act("clear_chat");   // 돌려받은 상태로 이 화면도 바로 비우고, 다른 화면에 신호를 보냄
+    if (!r) return false;
+    if (!r.ok) { toast(r.reason); return false; }
     return true;
   }
   async function hideChat(msgId, hidden) {
@@ -687,7 +699,7 @@ function connect({ id, key, presenceKey, presenceInfo, onState, onChat, onChatUp
 
   refresh(); refreshChat();
   return {
-    sb, act, sendChat, hideChat, refresh,
+    sb, act, sendChat, hideChat, clearChat, refresh,
     // 화면 연출 신호 (예: 순서 추첨) — 방송 화면이 받아서 같은 연출을 보여 줌
     show: payload => channel.send({ type: "broadcast", event: "show", payload }),
     rpc: (fn, args = {}) => rpc(fn, { p_id: id, p_key: key, ...args }),
@@ -706,11 +718,12 @@ function timeLeftMs(state, serverNow) {
 }
 
 /* [7] 채팅 창 (진행자와 팀장만) — 접었다 펼 수 있음 */
-function mountChat(root, net, { storeKey, startCollapsed = false, canHide = false } = {}) {
+function mountChat(root, net, { storeKey, startCollapsed = false, canHide = false, canClear = false } = {}) {
   root.innerHTML = `
     <button class="chat-head" type="button"><span>채팅</span><b class="unread" hidden>0</b><span class="grow"></span><span class="chev"></span></button>
     <div class="chat-body">
       <ul class="chat-list"><li class="empty">진행자와 팀장이 쓰는 채팅이에요. 방송 화면에도 나와요.</li></ul>
+      ${canClear ? `<div class="chat-tools"><button type="button" class="chat-clear">채팅 비우기</button></div>` : ""}
       <form class="chat-form"><input maxlength="200" placeholder="메시지 입력 (방송 화면에 나와요)" enterkeyhint="send"><button>보내기</button></form>
     </div>`;
   const head = root.querySelector(".chat-head"), list = root.querySelector(".chat-list");
@@ -729,6 +742,14 @@ function mountChat(root, net, { storeKey, startCollapsed = false, canHide = fals
     root.dispatchEvent(new Event("chattoggle"));
   }
   head.addEventListener("click", () => setCollapsed(!collapsed));
+  const clearBtn = root.querySelector(".chat-clear");
+  if (clearBtn) clearBtn.addEventListener("click", async () => {
+    if (!confirm("채팅을 모두 지울까요?\n\n진행자·팀장·방송 화면의 채팅이 한꺼번에 사라지고, 되돌릴 수 없어요.")) return;
+    clearBtn.disabled = true;
+    if (await net.clearChat()) toast("채팅을 비웠어요.");
+    clearBtn.disabled = false;
+  });
+  const emptyHtml = `<li class="empty">진행자와 팀장이 쓰는 채팅이에요. 방송 화면에도 나와요.</li>`;
   // 진행자: 메시지마다 방송에서 숨기기 / 다시 보이기
   list.addEventListener("click", e => {
     const b = e.target.closest("[data-hide]"); if (!b) return;
@@ -764,6 +785,7 @@ function mountChat(root, net, { storeKey, startCollapsed = false, canHide = fals
       else if (atBottom) list.scrollTop = list.scrollHeight;
     },
     update(m) { const li = list.querySelector(`li[data-id="${m.id}"]`); if (li) fill(li, m); },
+    clear() { list.innerHTML = emptyHtml; unread = 0; unreadEl.hidden = true; },
   };
 }
 

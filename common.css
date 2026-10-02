@@ -273,6 +273,9 @@
 .chat-list li.hid > b, .chat-list li.hid { color: var(--muted); }
 .chat-list li.hid { opacity: .7; }
 .chat-list .hid-tag { font-style: normal; font-size: 11px; color: var(--warn); margin-left: 6px; }
+.chat-tools { display: flex; justify-content: flex-end; padding: 0 12px 6px; }
+.chat-tools .chat-clear { font-size: 12px; padding: 3px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); cursor: pointer; }
+.chat-tools .chat-clear:hover { color: var(--accent); border-color: var(--accent); }
 .chat-list .hide-btn { margin-left: 6px; font-size: 11px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); cursor: pointer; }
 .chat-list .hide-btn:hover { color: var(--text); border-color: var(--accent); }
 .chat-form { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line); }
