@@ -45,14 +45,15 @@
   .pcard.enter .ph, .pcard.enter .info { animation: enter .6s cubic-bezier(.2,1.3,.4,1) both; }
   .pcard.enter .info { animation-delay: .08s; }
   @keyframes enter { 0% { opacity: 0; transform: translateX(-60px); } 100% { opacity: 1; transform: none; } }
-  .pname { font-family: var(--num); font-size: calc(84px * var(--ns, 1)); line-height: 1.1; text-shadow: 0 0 30px rgba(255,70,85,.35); }
+  .pname { font-family: var(--num); font-size: calc(84px * var(--ns, 1)); height: 96px; line-height: 96px; text-shadow: 0 0 30px rgba(255,70,85,.35); }   /* 이름 길이와 상관없이 줄 높이 고정 → 아래 칸이 움직이지 않음 */
   .pcard .info { min-width: 0; }
   .ppos { display: inline-block; margin-top: 10px; font-size: 26px; font-weight: 900; padding: 4px 16px; border-radius: 999px; background: rgba(255,255,255,.08); }
   .pmotto { margin-top: 14px; font-size: 24px; color: #d9def0; font-style: italic; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .ptiers { margin-top: 16px; display: grid; grid-template-columns: 1.25fr 1.25fr 1fr; gap: 10px; }
   .ptiers div { background: rgba(255,255,255,.05); border-radius: 14px; padding: 12px 14px; }
   .ptiers small { display: block; font-size: 17px; color: var(--muted); }
-  .ptiers b { font-family: var(--num); font-weight: 400; font-size: 30px; white-space: nowrap; }
+  .ptiers b { font-family: var(--num); font-weight: 400; font-size: 30px; white-space: nowrap; display: block; }
+  .ptiers div { min-width: 0; }
   .ptiers .sc b { color: var(--gold); font-size: 42px; }
   .punsold { margin-top: 14px; color: var(--warn); font-size: 22px; font-weight: 900; min-height: 30px; }
 
@@ -220,8 +221,8 @@
             <div class="pagents" id="pAgents"></div>
             <div class="pmotto" id="pMotto"></div>
             <div class="ptiers">
-              <div><small>최고 티어</small><b id="pPeak"></b></div>
-              <div><small>현재 티어</small><b id="pCur"></b></div>
+              <div><small>최고 티어</small><b id="pPeak" data-fit></b></div>
+              <div><small>현재 티어</small><b id="pCur" data-fit></b></div>
               <div class="sc"><small>티어 점수</small><b id="pScore"></b></div>
             </div>
             <div class="punsold" id="pUnsold"></div>
@@ -382,7 +383,7 @@ function showRoul(p, locked, no) {
   $("dNo").textContent = `${no}번`;
   $("dPhoto").innerHTML = avatar(p, 220);
   $("dName").textContent = p.name; $("dName").style.setProperty("--ns", nameScale(p.name));
-  $("dSub").innerHTML = locked ? `${gradeBadge(p)}${esc(p.pos)} · ${esc(p.peak)} / ${esc(p.current)} ${agentChips(p, "lg", 30)}` : "";
+  $("dSub").innerHTML = locked ? `${gradeBadge(p)}${esc(p.pos)} · ${esc(tierShort(p.peak))} / ${esc(tierShort(p.current))} ${agentChips(p, "lg", 30)}` : "";
 }
 function addDrawn(i, p) {
   const li = document.createElement("li");
@@ -464,8 +465,8 @@ function renderLot(s) {
   $("pPos").textContent = p ? p.pos : "-";
   $("pAgents").innerHTML = p ? agentChips(p, "", 36) : "";
   $("pMotto").textContent = p && p.motto ? `“${p.motto}”` : "";
-  $("pPeak").textContent = p ? p.peak : "-";
-  $("pCur").textContent = p ? p.current : "-";
+  $("pPeak").textContent = p ? tierShort(p.peak) : "-";
+  $("pCur").textContent = p ? tierShort(p.current) : "-";
   $("pScore").textContent = p ? playerScore(p).toFixed(1) : "-";
   $("pUnsold").textContent = p && p.unsold ? `유찰 ${p.unsold}회 — 한 번 더 유찰되면 무작위 배정` : "";
 

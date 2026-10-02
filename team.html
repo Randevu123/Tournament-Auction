@@ -23,7 +23,7 @@
   /* 지금 경매 중인 선수 */
   .lot { background: linear-gradient(160deg, #1a1f30, #10131d); border: 1px solid var(--line); border-radius: 18px; padding: 18px; display: grid; gap: 12px; }
   .lot .p-top { margin: 0; }
-  .lot .p-name { font-size: calc(clamp(28px, 7vw, 52px) * var(--ns, 1)); }
+  .lot .p-name { font-size: calc(clamp(28px, 7vw, 52px) * var(--ns, 1)); height: calc(clamp(28px, 7vw, 52px) * 1.15); line-height: calc(clamp(28px, 7vw, 52px) * 1.15); }
   .lot .p-top > div { min-width: 0; }
   .lot-bid { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; }
   .lot-bid .bid-amount { font-size: clamp(56px, 16vw, 96px); }
@@ -238,8 +238,8 @@ function render(prev) {
       <div class="p-top">${avatar(p, 96)}<div><div class="p-name" data-fit style="--ns:${nameScale(p.name)}">${gradeBadge(p, "lg")}${esc(p.name)}</div><span class="p-pos">${esc(p.pos)}</span><div class="p-agents">${agentChips(p, "lg", 24)}</div></div></div>
       ${p.motto ? `<div class="p-motto">“${esc(p.motto)}”</div>` : ""}
       <div class="p-tiers">
-        <div><small>최고 티어</small><b>${esc(p.peak)} <em>${tierPoints(p.peak)}점</em></b></div>
-        <div><small>현재 티어</small><b>${esc(p.current)} <em>${tierPoints(p.current)}점</em></b></div>
+        <div><small>최고 티어</small><b data-fit="9">${esc(tierShort(p.peak))} <em>${tierPoints(p.peak)}점</em></b></div>
+        <div><small>현재 티어</small><b data-fit="9">${esc(tierShort(p.current))} <em>${tierPoints(p.current)}점</em></b></div>
         <div class="score"><small>티어 점수</small><b>${playerScore(p).toFixed(1)}</b></div>
       </div>
       ${p.unsold ? `<div class="p-unsold">이미 ${p.unsold}번 유찰 — 이번에도 유찰되면 빈자리 팀에 무작위 배정</div>` : ""}

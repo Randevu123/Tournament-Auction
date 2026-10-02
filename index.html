@@ -113,8 +113,8 @@
       </div>
       <div class="p-motto" id="pMotto"></div>
       <div class="p-tiers">
-        <div><small>최고 티어</small><b id="pPeak">-</b></div>
-        <div><small>현재 티어</small><b id="pCur">-</b></div>
+        <div><small>최고 티어</small><b id="pPeak" data-fit>-</b></div>
+        <div><small>현재 티어</small><b id="pCur" data-fit>-</b></div>
         <div class="score"><small>티어 점수</small><b id="pScore">-</b></div>
       </div>
       <div class="p-unsold" id="pUnsold"></div>
@@ -493,7 +493,7 @@ function showRoulette(p, locked, no) {
   $("rNo").textContent = `${no}번`;
   $("rPhoto").innerHTML = avatar(p, 150);
   $("rName").textContent = p.name;
-  $("rSub").textContent = locked ? `${p.grade ? p.grade + "티어 · " : ""}${p.pos} · ${p.peak} / ${p.current}` : "";
+  $("rSub").textContent = locked ? `${p.grade ? p.grade + "티어 · " : ""}${p.pos} · ${tierShort(p.peak)} / ${tierShort(p.current)}` : "";
 }
 function appendOrder(i, p) {
   const li = document.createElement("li");
@@ -685,8 +685,8 @@ function render(prev) {
   $("pPos").textContent = p ? p.pos : "-";
   $("pAgents").innerHTML = p ? agentChips(p, "lg", 26) : "";
   $("pMotto").textContent = p && p.motto ? `“${p.motto}”` : "";
-  $("pPeak").innerHTML = p ? `${esc(p.peak)} <em>${tierPoints(p.peak)}점</em>` : "-";
-  $("pCur").innerHTML = p ? `${esc(p.current)} <em>${tierPoints(p.current)}점</em>` : "-";
+  $("pPeak").innerHTML = p ? `${esc(tierShort(p.peak))} <em>${tierPoints(p.peak)}점</em>` : "-";
+  $("pCur").innerHTML = p ? `${esc(tierShort(p.current))} <em>${tierPoints(p.current)}점</em>` : "-";
   $("pScore").textContent = p ? playerScore(p).toFixed(1) : "-";
   $("pUnsold").textContent = p && p.unsold ? `이미 ${p.unsold}번 유찰된 선수 — 이번에도 유찰되면 빈자리 팀에 무작위 배정` : "";
 

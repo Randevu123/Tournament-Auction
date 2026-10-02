@@ -83,7 +83,7 @@
   .card-label { font-size: 12px; letter-spacing: 3px; color: var(--accent); font-weight: 900; }
   .p-top { display: flex; gap: 18px; align-items: center; margin: 10px 0 12px; }
   .p-top .av { border: 3px solid rgba(255,255,255,.12); box-shadow: 0 10px 30px rgba(0,0,0,.4); }
-  .p-name { font-family: var(--num); font-size: calc(clamp(34px, 4.2vw, 64px) * var(--ns, 1)); line-height: 1.05; min-width: 0; }
+  .p-name { font-family: var(--num); font-size: calc(clamp(34px, 4.2vw, 64px) * var(--ns, 1)); height: calc(clamp(34px, 4.2vw, 64px) * 1.15); line-height: calc(clamp(34px, 4.2vw, 64px) * 1.15); min-width: 0; }   /* 줄 높이 고정 */
   .p-top > div { min-width: 0; flex: 1; }
   /* 한 줄 이름 (넘치면 common.js의 fitOneLine이 글자를 줄임) */
   [data-fit] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
@@ -94,6 +94,8 @@
   .p-tiers div { background: rgba(255,255,255,.04); border-radius: 10px; padding: 10px; }
   .p-tiers small { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
   .p-tiers b { font-size: 16px; }
+  .p-tiers div { min-width: 0; }
+  .p-tiers b[data-fit] { display: block; }
   .p-tiers b em { font-style: normal; font-weight: 400; font-size: 13px; color: var(--muted); }
   .p-tiers .score b { font-family: var(--num); font-size: 26px; color: var(--gold); font-weight: 400; }
   .p-unsold { margin-top: 12px; font-size: 13px; color: var(--warn); min-height: 18px; }

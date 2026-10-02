@@ -180,15 +180,19 @@ function nameScale(name) {
   const w = [...String(name || "")].reduce((a, ch) => a + (/[\u0000-\u024f]/.test(ch) ? (/[A-Z@MWmw]/.test(ch) ? 0.78 : 0.6) : 1), 0);
   return w <= 7 ? 1 : Math.max(0.42, 7 / w);
 }
+// 화면에 보이는 티어 이름을 짧게 ("다이아몬드 1" → "다이아 1"). 저장된 값과 엑셀은 그대로
+function tierShort(t) { return String(t == null ? "" : t).replace("다이아몬드", "다이아"); }
 // 이름은 한 줄로: data-fit 이 붙은 칸은 글자가 넘치면 줄바꿈 대신 글자 크기를 줄임 (원래의 35%, 11px까지)
 // 내용·칸 너비가 바뀔 때마다 자동으로 다시 맞춤 (화면마다 따로 부를 필요 없음)
 function fitOneLine(el) {
   const w = el.clientWidth, key = `${el.textContent}|${w}`;
   if (el._fitKey === key) return;
   el._fitKey = key;
-  el.style.fontSize = "";
+  el.style.fontSize = ""; el.style.height = ""; el.style.lineHeight = "";
   if (!w) { el._fitKey = ""; return; }            // 안 보이는 칸은 보일 때 맞춤
-  const base = parseFloat(getComputedStyle(el).fontSize) || 16;
+  const cs = getComputedStyle(el), base = parseFloat(cs.fontSize) || 16, h = parseFloat(cs.height);
+  // 글자를 줄여도 칸 높이는 원래대로 고정 (아래 줄들이 위로 딸려 올라가 위치가 무너지지 않게)
+  if (el.scrollWidth > el.clientWidth + 1 && h > 0 && cs.display !== "table-cell") { el.style.height = `${h}px`; el.style.lineHeight = `${h}px`; }
   const floor = Number(el.dataset.fit) || 11;                // data-fit="9"처럼 칸마다 가장 작은 글자 크기를 정할 수 있음 (기본 11px)
   const min = Math.max(base * 0.35, Math.min(base, floor));   // 그보다 작게는 안 줄임 (그래도 넘치면 끝이 …)
   let size = base;
